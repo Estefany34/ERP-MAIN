@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db, id, now, type Customer, type Product } from './store.js';
 import { asyncRoute, parseBody } from './http.js';
 import { bomSchema, branchSchema, customerSchema, documentSchema, documentUploadSchema, employeeSchema, incidentSchema, loginSchema, movementSchema, paymentSchema, productionSchema, productSchema, projectSchema, purchaseSchema, quoteSchema, saleSchema, supplierSchema, taskSchema, transactionSchema, warehouseSchema } from './validation.js';
-import { hashPassword, issueToken, requireAuth, requireRole, verifyPassword, type AuthRequest } from './auth.js';
+import { createSession, hashPassword, hashRefreshToken, issueRefreshToken, issueToken, requireAuth, requireRole, verifyPassword, type AuthRequest } from './auth.js';
 import { readDocument, writeDocument } from './storage.js';
 
 export const router = Router();
@@ -11,7 +11,11 @@ router.post('/auth/login', asyncRoute(async (req, res) => {
   const input = parseBody(loginSchema, req.body); const user = db.users.find(item => item.email === input.email.toLowerCase());
   if (!user || !(await verifyPassword(input.password, user.passwordHash))) return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });
   const membership = db.memberships.find(item => item.userId === user.id); if (!membership) return res.status(403).json({ error: { code: 'NO_MEMBERSHIP', message: 'No active company membership' } });
-  res.json({ token: issueToken(user.id, membership.companyId, membership.role), user: { id: user.id, name: user.name, email: user.email }, company: db.companies.find(item => item.id === membership.companyId) });
+  const session = createSession(user.id, membership.companyId, membership.role);
+  const refreshHash = await hashRefreshToken(session.refreshToken);
+  const activeSession = db.sessions.find(item => item.id === session.sessionId);
+  if (activeSession) activeSession.refreshTokenHash = refreshHash;
+  res.json({ token: issueToken(user.id, membership.companyId, membership.role, session.sessionId), refreshToken: session.refreshToken, user: { id: user.id, name: user.name, email: user.email }, company: db.companies.find(item => item.id === membership.companyId) });
 }));
 router.post('/auth/register', asyncRoute(async (req, res) => {
   const input = req.body as { email?: string; name?: string; password?: string; companyName?: string };
@@ -20,7 +24,36 @@ router.post('/auth/register', asyncRoute(async (req, res) => {
   const user = { id: id(), email: input.email.toLowerCase(), name: input.name, passwordHash: await hashPassword(input.password), createdAt: now() };
   const company = { id: id(), name: input.companyName, currency: 'USD', enabledModules: ['crm', 'sales', 'inventory', 'reports'], createdAt: now() };
   db.users.push(user); db.companies.push(company); db.memberships.push({ userId: user.id, companyId: company.id, role: 'owner' });
-  res.status(201).json({ token: issueToken(user.id, company.id, 'owner'), user: { id: user.id, name: user.name, email: user.email }, company });
+  const session = createSession(user.id, company.id, 'owner');
+  const refreshHash = await hashRefreshToken(session.refreshToken);
+  const activeSession = db.sessions.find(item => item.id === session.sessionId);
+  if (activeSession) activeSession.refreshTokenHash = refreshHash;
+  res.status(201).json({ token: issueToken(user.id, company.id, 'owner', session.sessionId), refreshToken: session.refreshToken, user: { id: user.id, name: user.name, email: user.email }, company });
+}));
+router.post('/auth/refresh', asyncRoute(async (req, res) => {
+  const refreshToken = typeof req.body === 'object' && req.body && 'refreshToken' in req.body ? String((req.body as { refreshToken?: string }).refreshToken ?? '') : '';
+  if (!refreshToken) return res.status(400).json({ error: { code: 'MISSING_REFRESH_TOKEN', message: 'Refresh token is required' } });
+  try {
+    const payload = (await import('jsonwebtoken')).default.verify(refreshToken, (await import('./auth.js')).getJwtSecret()) as { sub: string; companyId: string; sid: string; tokenType: string };
+    if (payload.tokenType !== 'refresh') return res.status(401).json({ error: { code: 'INVALID_TOKEN', message: 'Token type mismatch' } });
+    const session = db.sessions.find(item => item.id === payload.sid && item.userId === payload.sub && item.companyId === payload.companyId && !item.revokedAt && new Date(item.expiresAt).getTime() > Date.now());
+    if (!session) return res.status(401).json({ error: { code: 'SESSION_EXPIRED', message: 'Session expired or revoked' } });
+    const valid = await verifyPassword(refreshToken, session.refreshTokenHash || '$2a$12$invalid');
+    if (!valid) return res.status(401).json({ error: { code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid' } });
+    const nextRefreshToken = issueRefreshToken(session.userId, session.companyId, session.id);
+    session.refreshTokenHash = await hashRefreshToken(nextRefreshToken);
+    session.lastUsedAt = now();
+    const membership = db.memberships.find(item => item.userId === session.userId && item.companyId === session.companyId);
+    if (!membership) return res.status(403).json({ error: { code: 'NO_MEMBERSHIP', message: 'Company membership required' } });
+    res.json({ token: issueToken(session.userId, session.companyId, membership.role, session.id), refreshToken: nextRefreshToken, user: db.users.find(item => item.id === session.userId), company: db.companies.find(item => item.id === session.companyId) });
+  } catch {
+    res.status(401).json({ error: { code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or expired' } });
+  }
+}));
+router.post('/auth/logout', requireAuth, asyncRoute(async (req: AuthRequest, res) => {
+  const session = req.sessionId ? db.sessions.find(item => item.id === req.sessionId && item.userId === req.user!.id && item.companyId === req.user!.companyId) : undefined;
+  if (session) { session.revokedAt = now(); session.lastUsedAt = now(); }
+  res.json({ success: true });
 }));
 
 router.use(requireAuth);

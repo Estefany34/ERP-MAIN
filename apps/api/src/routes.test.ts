@@ -2,8 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './app.js';
 import { db } from './store.js';
+import { getJwtSecret } from './auth.js';
 
 async function runningApp() { const server = createApp().listen(0); await new Promise<void>(resolve => server.once('listening', () => resolve())); return server; }
+
+test('production secrets fail fast without an explicit JWT secret', () => {
+  assert.throws(() => getJwtSecret('production', {}), /JWT_SECRET/);
+});
 test('health endpoint is public', async () => { const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/health`); assert.equal(response.status, 200); server.close(); });
 test('protected data rejects missing token', async () => { const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/customers`); assert.equal(response.status, 401); server.close(); });
 test('login returns a company-scoped token', async () => { if (!db.users.length) await (await import('./store.js')).seedOwner(); const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@demo.local', password: 'Admin123!' }) }); const body = await response.json() as { token: string; company: { id: string } }; assert.equal(response.status, 200); assert.ok(body.token); assert.ok(body.company.id); server.close(); });

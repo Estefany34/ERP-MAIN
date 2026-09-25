@@ -5,6 +5,17 @@ export type Role = 'owner' | 'admin' | 'sales' | 'inventory' | 'viewer';
 export type Company = { id: string; name: string; currency: string; enabledModules: string[]; createdAt: string };
 export type User = { id: string; email: string; name: string; passwordHash: string; createdAt: string };
 export type Membership = { userId: string; companyId: string; role: Role };
+export type Session = {
+  id: string;
+  userId: string;
+  companyId: string;
+  role: Role;
+  refreshTokenHash: string;
+  revokedAt?: string;
+  expiresAt: string;
+  createdAt: string;
+  lastUsedAt: string;
+};
 export type Customer = { id: string; companyId: string; name: string; email?: string; phone?: string; classification?: string; createdAt: string };
 export type Product = { id: string; companyId: string; sku: string; name: string; price: number; cost: number; stockMinimum: number; createdAt: string };
 export type InventoryMovement = { id: string; companyId: string; productId: string; type: 'in' | 'out' | 'adjustment'; quantity: number; reference?: string; createdAt: string };
@@ -27,7 +38,7 @@ export type Warehouse = { id: string; companyId: string; branchId?: string; name
 export type BillOfMaterial = { id: string; companyId: string; productId: string; components: { productId: string; quantity: number }[]; createdAt: string };
 
 export const db = {
-  companies: [] as Company[], users: [] as User[], memberships: [] as Membership[], customers: [] as Customer[],
+  companies: [] as Company[], users: [] as User[], memberships: [] as Membership[], sessions: [] as Session[], customers: [] as Customer[],
   products: [] as Product[], movements: [] as InventoryMovement[], sales: [] as Sale[], quotes: [] as Quote[], payments: [] as Payment[], suppliers: [] as Supplier[], purchases: [] as Purchase[], employees: [] as Employee[], projects: [] as Project[], tasks: [] as Task[], financialTransactions: [] as FinancialTransaction[], notifications: [] as Notification[], documents: [] as DocumentRecord[], incidents: [] as Incident[], productionOrders: [] as ProductionOrder[], branches: [] as Branch[], warehouses: [] as Warehouse[], billsOfMaterial: [] as BillOfMaterial[], audits: [] as AuditLog[]
 };
 
