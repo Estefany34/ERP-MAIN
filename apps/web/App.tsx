@@ -9,7 +9,8 @@ import { LoadingState } from './src/components/ui/LoadingState';
 import { StatCard } from './src/components/ui/StatCard';
 import { DataTable } from './src/components/ui/Table';
 import { API, endpointMap, type Dashboard, type Resource } from './src/services/api';
-import fanixTheme from './src/theme/fanixTheme';
+import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvider';
+import type { FanixTheme } from './src/theme/fanixTheme';
 
 const moduleItems = [
   { label: 'Dashboard', value: 'Dashboard' },
@@ -70,6 +71,17 @@ const tableColumnsByModule: Record<string, { key: string; label: string }[]> = {
 };
 
 export default function App() {
+  return (
+    <FanixThemeProvider>
+      <ERPApp />
+    </FanixThemeProvider>
+  );
+}
+
+function ERPApp() {
+  const { theme } = useFanixTheme();
+  const styles = createStyles(theme);
+  const [focusedField, setFocusedField] = useState('');
   const [token, setToken] = useState('');
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
@@ -212,17 +224,21 @@ export default function App() {
             value={email}
             onChangeText={setEmail}
             placeholder="Correo electrónico"
-            placeholderTextColor={fanixTheme.colors.textMuted}
-            style={styles.input}
+            onFocus={() => setFocusedField('email')}
+            onBlur={() => setFocusedField('')}
+            placeholderTextColor={theme.colors.inputPlaceholder}
+            style={[styles.input, focusedField === 'email' && styles.inputFocused]}
           />
 
-          <View style={styles.passwordWrap}>
+          <View style={[styles.passwordWrap, focusedField === 'password' && styles.inputFocused]}>
             <TextInput
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
               placeholder="Contraseña"
-              placeholderTextColor={fanixTheme.colors.textMuted}
+              onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField('')}
+              placeholderTextColor={theme.colors.inputPlaceholder}
               style={styles.passwordInput}
             />
             <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.toggleButton}>
@@ -231,7 +247,7 @@ export default function App() {
           </View>
 
           <Pressable onPress={login} disabled={busy} style={[styles.primaryButton, busy && styles.primaryButtonDisabled]}>
-            <Text style={styles.primaryButtonText}>{busy ? 'Iniciando sesión...' : 'Iniciar sesión'}</Text>
+            <Text style={[styles.primaryButtonText, busy && { color: theme.colors.disabledText }]}>{busy ? 'Iniciando sesión...' : 'Iniciar sesión'}</Text>
           </Pressable>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -311,8 +327,10 @@ export default function App() {
                 value={formValue}
                 onChangeText={setFormValue}
                 placeholder={`Nuevo ${active.toLowerCase()}`}
-                placeholderTextColor={fanixTheme.colors.textMuted}
-                style={styles.formInput}
+                onFocus={() => setFocusedField('new-record')}
+                onBlur={() => setFocusedField('')}
+                placeholderTextColor={theme.colors.inputPlaceholder}
+                style={[styles.formInput, focusedField === 'new-record' && styles.inputFocused]}
               />
               <Pressable onPress={createRecord} disabled={busy || !formValue.trim()} style={[styles.secondaryButton, (busy || !formValue.trim()) && styles.primaryButtonDisabled]}>
                 <Text style={styles.secondaryButtonText}>{busy ? 'Guardando...' : 'Crear'}</Text>
@@ -333,10 +351,11 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: FanixTheme) {
+  return StyleSheet.create({
   loginPage: {
     flex: 1,
-    backgroundColor: fanixTheme.colors.background,
+    backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -344,89 +363,92 @@ const styles = StyleSheet.create({
   loginGradient: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: '#EAF2FF',
+    backgroundColor: theme.colors.loginBackdrop,
   },
   loginCard: {
     width: '100%',
     maxWidth: 480,
-    backgroundColor: fanixTheme.colors.surface,
-    borderRadius: fanixTheme.radius.xl,
+    backgroundColor: theme.colors.surfaceElevated,
+    borderRadius: theme.radius.xl,
     borderWidth: 1,
-    borderColor: fanixTheme.colors.border,
+    borderColor: theme.colors.border,
     padding: 30,
     zIndex: 1,
-    ...fanixTheme.shadows.md,
+    ...theme.shadows.md,
+    shadowColor: theme.colors.sidebarBackground,
   },
-  brandHeader: { marginBottom: 18 },
-  title: { color: fanixTheme.colors.textPrimary, fontSize: 34, fontWeight: '800', marginBottom: 8 },
-  subtitle: { color: fanixTheme.colors.textSecondary, fontSize: 15, marginBottom: 24, lineHeight: 22 },
+  brandHeader: { marginBottom: 18, alignItems: 'center', backgroundColor: theme.colors.logoSurface, borderRadius: 8, overflow: 'hidden' },
+  title: { color: theme.colors.textPrimary, fontSize: 34, fontWeight: '800', marginBottom: 8 },
+  subtitle: { color: theme.colors.textSecondary, fontSize: 15, marginBottom: 24, lineHeight: 22 },
   input: {
-    backgroundColor: fanixTheme.colors.surface,
+    backgroundColor: theme.colors.inputBackground,
     borderWidth: 1,
-    borderColor: fanixTheme.colors.border,
-    borderRadius: fanixTheme.radius.md,
+    borderColor: theme.colors.inputBorder,
+    borderRadius: theme.radius.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 14,
-    color: fanixTheme.colors.textPrimary,
+    color: theme.colors.textPrimary,
     fontSize: 15,
   },
   passwordWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: fanixTheme.colors.surface,
+    backgroundColor: theme.colors.inputBackground,
     borderWidth: 1,
-    borderColor: fanixTheme.colors.border,
-    borderRadius: fanixTheme.radius.md,
+    borderColor: theme.colors.inputBorder,
+    borderRadius: theme.radius.md,
     marginBottom: 18,
     overflow: 'hidden',
   },
-  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 12, color: fanixTheme.colors.textPrimary, fontSize: 15 },
+  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 12, color: theme.colors.textPrimary, fontSize: 15 },
   toggleButton: { paddingHorizontal: 12, paddingVertical: 12 },
-  toggleText: { color: fanixTheme.colors.primary, fontWeight: '700' },
+  toggleText: { color: theme.colors.accent, fontWeight: '700' },
   primaryButton: {
-    backgroundColor: fanixTheme.colors.primary,
-    borderRadius: fanixTheme.radius.md,
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonDisabled: { opacity: 0.5 },
-  primaryButtonText: { color: fanixTheme.colors.white, fontSize: 15, fontWeight: '700' },
-  errorText: { marginTop: 14, color: fanixTheme.colors.danger, fontWeight: '600' },
+  primaryButtonDisabled: { backgroundColor: theme.colors.disabledSurface },
+  primaryButtonText: { color: theme.colors.textInverse, fontSize: 15, fontWeight: '700' },
+  errorText: { marginTop: 14, color: theme.colors.danger, fontWeight: '600' },
   hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },
-  hintText: { color: fanixTheme.colors.textSecondary, fontSize: 12 },
-  notice: { backgroundColor: '#FFF4F4', borderColor: '#F7C7C7', borderWidth: 1, padding: 12 },
-  noticeText: { color: fanixTheme.colors.danger, fontWeight: '700' },
+  hintText: { color: theme.colors.textSecondary, fontSize: 12 },
+  notice: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder, borderWidth: 1, padding: 12 },
+  noticeText: { color: theme.colors.danger, fontWeight: '700' },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   twoColumn: { flexDirection: 'row', gap: 18 },
   cardSection: { flex: 1, padding: 18 },
-  sectionTitle: { color: fanixTheme.colors.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 14 },
-  listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: fanixTheme.colors.border },
-  listTitle: { color: fanixTheme.colors.textPrimary, fontWeight: '700' },
-  listMeta: { color: fanixTheme.colors.textSecondary, fontSize: 12, marginTop: 4 },
+  sectionTitle: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 14 },
+  listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.divider },
+  listTitle: { color: theme.colors.textPrimary, fontWeight: '700' },
+  listMeta: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 4 },
   activityItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  dot: { width: 10, height: 10, borderRadius: 99, backgroundColor: fanixTheme.colors.primary },
+  dot: { width: 10, height: 10, borderRadius: 99, backgroundColor: theme.colors.accent },
   activityTextWrap: { flex: 1 },
-  activityTitle: { color: fanixTheme.colors.textPrimary, fontWeight: '700' },
-  activityMeta: { color: fanixTheme.colors.textSecondary, fontSize: 12, marginTop: 2 },
+  activityTitle: { color: theme.colors.textPrimary, fontWeight: '700' },
+  activityMeta: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 2 },
   moduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
   inlineCreate: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   formInput: {
-    backgroundColor: fanixTheme.colors.surfaceSecondary,
-    borderColor: fanixTheme.colors.border,
+    backgroundColor: theme.colors.inputBackground,
+    borderColor: theme.colors.inputBorder,
     borderWidth: 1,
-    borderRadius: fanixTheme.radius.md,
+    borderRadius: theme.radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
     minWidth: 180,
-    color: fanixTheme.colors.textPrimary,
+    color: theme.colors.textPrimary,
   },
   secondaryButton: {
-    backgroundColor: fanixTheme.colors.primaryLight,
-    borderRadius: fanixTheme.radius.md,
+    backgroundColor: theme.colors.accentSoft,
+    borderRadius: theme.radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  secondaryButtonText: { color: fanixTheme.colors.primaryDark, fontWeight: '700' },
+  secondaryButtonText: { color: theme.colors.accent, fontWeight: '700' },
+  inputFocused: { borderColor: theme.colors.accent },
 });
+}

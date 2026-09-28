@@ -1,17 +1,18 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import fanixTheme from '../../theme/fanixTheme';
+import { useFanixTheme } from '../../theme/FanixThemeProvider';
 
 export function LoadingState({ label = 'Cargando...' }: { label?: string }) {
+  const { theme } = useFanixTheme();
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="small" color={fanixTheme.colors.primary} />
-      <Text style={styles.text}>{label}</Text>
+      <ActivityIndicator size="small" color={theme.colors.accent} />
+      <Text style={[styles.text, { color: theme.colors.textSecondary }]}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
-  text: { color: fanixTheme.colors.textSecondary, fontWeight: '600' },
+  text: { fontWeight: '600' },
 });
