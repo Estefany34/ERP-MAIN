@@ -71,8 +71,10 @@ const tableColumnsByModule: Record<string, { key: string; label: string }[]> = {
 
 export default function App() {
   const [token, setToken] = useState('');
-  const [email, setEmail] = useState('admin@demo.local');
-  const [password, setPassword] = useState('Admin123!');
+  const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
+  const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
+  const [email, setEmail] = useState(defaultDemoEmail);
+  const [password, setPassword] = useState(defaultDemoPassword);
   const [showPassword, setShowPassword] = useState(false);
   const [active, setActive] = useState('Dashboard');
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -234,10 +236,12 @@ export default function App() {
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <View style={styles.hintRow}>
-            <Badge label="Demo" variant="info" />
-            <Text style={styles.hintText}>admin@demo.local / Admin123!</Text>
-          </View>
+          {__DEV__ ? (
+            <View style={styles.hintRow}>
+              <Badge label="Demo" variant="info" />
+              <Text style={styles.hintText}>admin@demo.local / Admin123!</Text>
+            </View>
+          ) : null}
         </View>
       </SafeAreaView>
     );

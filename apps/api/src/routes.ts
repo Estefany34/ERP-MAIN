@@ -5,6 +5,7 @@ import { asyncRoute, parseBody } from './http.js';
 import { bomSchema, branchSchema, customerSchema, documentSchema, documentUploadSchema, employeeSchema, incidentSchema, loginSchema, movementSchema, paymentSchema, productionSchema, productSchema, projectSchema, purchaseSchema, quoteSchema, saleSchema, supplierSchema, taskSchema, transactionSchema, warehouseSchema } from './validation.js';
 import { createSession, hashPassword, hashRefreshToken, issueRefreshToken, issueToken, requireAuth, requireRole, verifyPassword, type AuthRequest } from './auth.js';
 import { readDocument, writeDocument } from './storage.js';
+import { isPublicRegistrationAllowed } from './app.js';
 
 export const router = Router();
 router.post('/auth/login', asyncRoute(async (req, res) => {
@@ -18,6 +19,9 @@ router.post('/auth/login', asyncRoute(async (req, res) => {
   res.json({ token: issueToken(user.id, membership.companyId, membership.role, session.sessionId), refreshToken: session.refreshToken, user: { id: user.id, name: user.name, email: user.email }, company: db.companies.find(item => item.id === membership.companyId) });
 }));
 router.post('/auth/register', asyncRoute(async (req, res) => {
+  if (!isPublicRegistrationAllowed()) {
+    return res.status(403).json({ error: { code: 'REGISTRATION_DISABLED', message: 'Public registration is disabled in this environment' } });
+  }
   const input = req.body as { email?: string; name?: string; password?: string; companyName?: string };
   if (!input.email || !input.name || !input.password || !input.companyName || input.password.length < 8) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'name, email, companyName and password of 8+ characters are required' } });
   if (db.users.some(user => user.email === input.email!.toLowerCase())) return res.status(409).json({ error: { code: 'EMAIL_EXISTS', message: 'Email already registered' } });

@@ -44,7 +44,7 @@ export const db = {
 
 export async function seedOwner() {
   if (db.users.length > 0) return;
-  const user: User = { id: randomUUID(), email: 'admin@demo.local', name: 'Administrador', passwordHash: await bcrypt.hash('Admin123!', 12), createdAt: new Date().toISOString() };
+  const user: User = { id: randomUUID(), email: 'admin@demo.local', name: 'Administrador', passwordHash: await bcrypt.hash(process.env.DEMO_PASSWORD ?? 'Admin123!', 12), createdAt: new Date().toISOString() };
   const company: Company = { id: randomUUID(), name: 'Empresa demo', currency: 'USD', enabledModules: ['crm', 'sales', 'inventory', 'purchases', 'reports'], createdAt: new Date().toISOString() };
   db.users.push(user); db.companies.push(company); db.memberships.push({ userId: user.id, companyId: company.id, role: 'owner' });
 }

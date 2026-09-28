@@ -34,7 +34,7 @@ export function createSession(userId: string, companyId: string, role: Role) {
 }
 
 export function issueToken(userId: string, companyId: string, role: Role, sessionId?: string) {
-  return jwt.sign({ sub: userId, companyId, role, sid: sessionId, tokenType: 'access' }, secret(), { expiresIn: '8h' });
+  return jwt.sign({ sub: userId, companyId, role, sid: sessionId, tokenType: 'access' }, secret(), { expiresIn: '30m' });
 }
 
 export function issueRefreshToken(userId: string, companyId: string, sessionId: string) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp } from './app.js';
+import { createApp, getAllowedOrigins, isPublicRegistrationAllowed } from './app.js';
 import { db } from './store.js';
 import { getJwtSecret } from './auth.js';
 
@@ -9,7 +9,15 @@ async function runningApp() { const server = createApp().listen(0); await new Pr
 test('production secrets fail fast without an explicit JWT secret', () => {
   assert.throws(() => getJwtSecret('production', {}), /JWT_SECRET/);
 });
-test('health endpoint is public', async () => { const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/health`); assert.equal(response.status, 200); server.close(); });
+test('production requires a configured CORS origin list', () => {
+  assert.throws(() => getAllowedOrigins('production', {}), /CORS_ORIGIN/);
+});
+test('health endpoint is public without exposing internal details', async () => { const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/health`); const body = await response.json() as { status: string; service: string; persistence?: string }; assert.equal(response.status, 200); assert.equal(body.status, 'ok'); assert.equal(body.service, 'fanix-api'); assert.equal('persistence' in body, false); server.close(); });
+test('public registration is disabled by default in production', () => {
+  assert.equal(isPublicRegistrationAllowed({ NODE_ENV: 'production', ALLOW_PUBLIC_REGISTRATION: 'false' }), false);
+  assert.equal(isPublicRegistrationAllowed({ NODE_ENV: 'development', ALLOW_PUBLIC_REGISTRATION: 'false' }), true);
+  assert.equal(isPublicRegistrationAllowed({ NODE_ENV: 'production', ALLOW_PUBLIC_REGISTRATION: 'true' }), true);
+});
 test('protected data rejects missing token', async () => { const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/customers`); assert.equal(response.status, 401); server.close(); });
 test('login returns a company-scoped token', async () => { if (!db.users.length) await (await import('./store.js')).seedOwner(); const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@demo.local', password: 'Admin123!' }) }); const body = await response.json() as { token: string; company: { id: string } }; assert.equal(response.status, 200); assert.ok(body.token); assert.ok(body.company.id); server.close(); });
 test('company data is isolated and critical inventory flow is idempotent', async () => {
