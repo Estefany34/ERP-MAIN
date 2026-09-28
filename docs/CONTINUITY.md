@@ -1,44 +1,57 @@
 # CONTINUITY REPORT
 
 ## Phase current
-FASE 0 + FASE 1 + FASE 2 started and stabilized for the core API foundation.
+FASE 3: branding + UI/UX + design system for Fanix Global ERP.
 
 ## Completed
-- Audit of the real repository baseline and existing tests.
-- Preservation of the working in-memory ERP API behavior.
-- Added fail-fast JWT secret validation for production.
-- Hardened authentication flow with session-aware access tokens and refresh-token rotation support.
-- Added regression test to enforce the production secret contract.
-- Verified TypeScript compile and API tests pass.
+- Audited the actual web frontend and confirmed the app was a single-file ERP prototype using the real API contract.
+- Kept the backend and API routes intact without changing contracts or introducing mock data.
+- Replaced the provisional ERP/CORE branding with a Fanix Global enterprise shell.
+- Introduced a central Fanix design token palette and reusable UI building blocks for cards, badges, stat cards, empty states, data tables and shell layout.
+- Redesigned the login experience with secure password toggle, enterprise styling and Fanix branding.
+- Reworked the dashboard into a modular, real-data summary panel based on the existing `/dashboard` API response.
+- Preserved the login flow and module loading while keeping the app responsive and consistent.
 
-## Pending
-- Full modular monolith refactor of API into repositories/services/controllers.
-- Real MongoDB model layer and tenant-aware repository enforcement beyond in-memory data.
-- Dynamic RBAC permissions catalog and per-company authorization mapping.
-- Centralized audit event pipeline and tenant isolation tests.
-- Fanix Global design system and web/mobile shell refactor.
+## Branding status
+- Official Fanix Global branding is applied in the web shell and login flow.
+- A ready-to-use logo component was created at `apps/web/src/components/branding/FanixLogo.tsx`.
+- No logo asset file was found in the repository workspace, so no unrelated or invented logo was added. The app is prepared to integrate the official image if the asset becomes available.
 
-## Architectural decisions
-- Keep the existing routes and store contracts stable while improving security boundaries.
-- Require a non-empty JWT secret in production with no development fallback.
-- Add session records for tenant-aware auth verification without breaking current clients.
-- Continue to improve persistence and authorization in small, test-backed increments.
+## Frontend architecture result
+- `apps/web/App.tsx` now acts as the app bootstrap and state coordinator instead of containing all presentation logic.
+- Shared theme lives in `apps/web/src/theme/fanixTheme.ts`.
+- UI primitives are created under `apps/web/src/components/ui` and `apps/web/src/components/layout`.
+- API config is centralized in `apps/web/src/services/api.ts`.
 
 ## Files modified
-- apps/api/src/auth.ts
-- apps/api/src/routes.ts
-- apps/api/src/server.ts
-- apps/api/src/store.ts
-- apps/api/src/routes.test.ts
+- `apps/web/App.tsx`
+- `apps/web/src/theme/fanixTheme.ts`
+- `apps/web/src/services/api.ts`
+- `apps/web/src/components/layout/AppShell.tsx`
+- `apps/web/src/components/branding/FanixLogo.tsx`
+- `apps/web/src/components/ui/Badge.tsx`
+- `apps/web/src/components/ui/Card.tsx`
+- `apps/web/src/components/ui/StatCard.tsx`
+- `apps/web/src/components/ui/LoadingState.tsx`
+- `apps/web/src/components/ui/Table.tsx`
+- `apps/web/src/components/ui/EmptyState.tsx`
+- `docs/CONTINUITY.md`
 
-## Tests executed
-- npm run typecheck --workspace apps/api
-- npm test --workspace apps/api
+## Verification executed
+- `npm run typecheck --workspace apps/web` (pending/required after final refactor)
+- `npm run export --workspace apps/web` (pending/required after final refactor)
+- Local API smoke check with the existing demo login credentials (`admin@demo.local` / `Admin123!`)
 
 ## Known risks
-- The backend still relies on a global in-memory store; that is intentionally being phased out.
-- Refresh-token validation is implemented but not yet exposed as a full durable session/revocation model in MongoDB.
-- Frontend/design system remains provisional and not yet aligned to Fanix Global branding.
+- No official Fanix logo asset was available in the repository; the placeholder component is ready for final asset integration.
+- The web app remains intentionally compatible with the existing backend and does not yet include a full mobile-native redesign.
+- The backend and API contracts remain unchanged as requested for this frontend phase.
+
+## Pending
+- Final TypeScript validation and web export confirmation.
+- Final visual pass on responsive behavior in tablet/mobile widths.
+- Integration of the official Fanix logo asset once provided by design/brand assets.
+- Next stage after this phase: deployment readiness for Android/Expo, MongoDB Atlas, Render backend, Cloudflare frontend, and smoke tests.
 
 ## Exact next step
-Implement the first real repository/service boundary around the user/company session and tenant enforcement, then migrate one domain (customers or products) off the global store without breaking the API contracts.
+Complete final front-end verification and export checks, then proceed to deployment-readiness planning without touching the stable backend contracts.
