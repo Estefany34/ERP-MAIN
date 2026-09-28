@@ -83,7 +83,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [loadingModule, setLoadingModule] = useState(false);
   const [formValue, setFormValue] = useState('');
-  const [companyName, setCompanyName] = useState('EMPRESA DEMO');
+  const [companyName, setCompanyName] = useState('');
 
   const tableColumns = useMemo(() => tableColumnsByModule[active] ?? tableColumnsByModule.Productos, [active]);
 
@@ -98,7 +98,7 @@ export default function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo iniciar sesión');
-      setCompanyName(data.company?.name ?? 'EMPRESA DEMO');
+      setCompanyName(data.company?.name ?? '');
       setToken(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
@@ -184,10 +184,10 @@ export default function App() {
   }, [token, active]);
 
   const stats = [
-    { label: 'Clientes', value: dashboard?.counts.customers ?? 0, delta: '+12%' },
-    { label: 'Productos', value: dashboard?.counts.products ?? 0, delta: '+4%' },
-    { label: 'Ventas', value: dashboard?.counts.sales ?? 0, delta: '+8%' },
-    { label: 'Notificaciones', value: dashboard?.counts.unreadNotifications ?? 0, delta: '3 pendientes' },
+    { label: 'Clientes', value: dashboard?.counts.customers ?? 0, delta: undefined },
+    { label: 'Productos', value: dashboard?.counts.products ?? 0, delta: undefined },
+    { label: 'Ventas', value: dashboard?.counts.sales ?? 0, delta: undefined },
+    { label: 'Notificaciones', value: dashboard?.counts.unreadNotifications ?? 0, delta: undefined },
   ];
 
   const inventoryAlerts = dashboard?.lowStock ?? [];
@@ -262,7 +262,7 @@ export default function App() {
         <>
           <View style={styles.statsRow}>
             {stats.map((stat) => (
-              <StatCard key={stat.label} label={stat.label} value={stat.value} delta={stat.delta} />
+              <StatCard key={stat.label} label={stat.label} value={stat.value} delta={stat.delta ?? undefined} />
             ))}
           </View>
 

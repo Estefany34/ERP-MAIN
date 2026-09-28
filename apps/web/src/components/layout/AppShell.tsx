@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import fanixTheme from '../../theme/fanixTheme';
 
 export type NavItem = {
@@ -18,17 +18,20 @@ export function AppShell({
   children,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   navItems: NavItem[];
   activeItem: string;
   onSelect: (value: string) => void;
   onLogout: () => void;
   children: React.ReactNode;
 }) {
+  const compact = Dimensions.get('window').width < 900;
+  const companyName = subtitle?.trim() || 'Empresa';
+
   return (
     <SafeAreaView style={styles.page}>
-      <View style={styles.shell}>
-        <View style={styles.sidebar}>
+      <View style={[styles.shell, compact && styles.shellCompact]}>
+        <View style={[styles.sidebar, compact && styles.sidebarCompact]}>
           <View style={styles.brandWrap}>
             <Image source={require('../branding/Group 1.png')} resizeMode="contain" style={styles.logoImage} />
           </View>
@@ -50,13 +53,13 @@ export function AppShell({
         </View>
 
         <View style={styles.main}>
-          <View style={styles.topbar}>
-            <View>
+          <View style={[styles.topbar, compact && styles.topbarCompact]}>
+            <View style={styles.topbarTitleWrap}>
               <Text style={styles.topbarEyebrow}>Fanix Global</Text>
               <Text style={styles.title}>{title}</Text>
             </View>
-            <View style={styles.topbarActions}>
-              <View style={styles.companyBadge}><Text style={styles.companyText}>EMPRESA DEMO</Text></View>
+            <View style={[styles.topbarActions, compact && styles.topbarActionsCompact]}>
+              <View style={styles.companyBadge}><Text style={styles.companyText} numberOfLines={1}>{companyName}</Text></View>
               <View style={styles.userBadge}><Text style={styles.userText}>Admin</Text></View>
             </View>
           </View>
@@ -71,14 +74,17 @@ export function AppShell({
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: fanixTheme.colors.background },
   shell: { flex: 1, flexDirection: 'row' },
+  shellCompact: { flexDirection: 'column' },
   sidebar: {
     width: 240,
+    maxWidth: '100%',
     backgroundColor: fanixTheme.colors.primaryDark,
     paddingHorizontal: 18,
     paddingVertical: 22,
     borderRightWidth: 1,
     borderRightColor: '#1A2F52',
   },
+  sidebarCompact: { width: '100%', borderRightWidth: 0, borderBottomWidth: 1, borderBottomColor: '#1A2F52' },
   brandWrap: { flexDirection: 'row', alignItems: 'center', paddingBottom: 18 },
   logoImage: { width: 180, height: 56, alignSelf: 'flex-start' },
   sectionLabel: { color: '#9BB9E7', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 10, marginBottom: 10 },
@@ -92,10 +98,13 @@ const styles = StyleSheet.create({
   signOutText: { color: '#D8E6FF', fontWeight: '700' },
   main: { flex: 1 },
   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 26, paddingVertical: 18, backgroundColor: fanixTheme.colors.surface, borderBottomWidth: 1, borderBottomColor: fanixTheme.colors.border },
+  topbarCompact: { alignItems: 'flex-start', gap: 12 },
   topbarEyebrow: { color: fanixTheme.colors.primary, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' },
   title: { color: fanixTheme.colors.textPrimary, fontSize: 28, fontWeight: '800', marginTop: 2 },
-  topbarActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  companyBadge: { backgroundColor: fanixTheme.colors.primaryLight, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  topbarTitleWrap: { flexShrink: 1 },
+  topbarActions: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  topbarActionsCompact: { width: '100%', justifyContent: 'flex-start' },
+  companyBadge: { backgroundColor: fanixTheme.colors.primaryLight, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, maxWidth: '70%' },
   companyText: { color: fanixTheme.colors.primaryDark, fontWeight: '700', fontSize: 11, letterSpacing: 0.8 },
   userBadge: { backgroundColor: fanixTheme.colors.surfaceSecondary, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   userText: { color: fanixTheme.colors.textPrimary, fontWeight: '700', fontSize: 11 },
