@@ -19,7 +19,34 @@ test('public registration is disabled by default in production', () => {
   assert.equal(isPublicRegistrationAllowed({ NODE_ENV: 'production', ALLOW_PUBLIC_REGISTRATION: 'true' }), true);
 });
 test('protected data rejects missing token', async () => { const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/customers`); assert.equal(response.status, 401); server.close(); });
-test('login returns a company-scoped token', async () => { if (!db.users.length) await (await import('./store.js')).seedOwner(); const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@demo.local', password: 'Admin123!' }) }); const body = await response.json() as { token: string; company: { id: string } }; assert.equal(response.status, 200); assert.ok(body.token); assert.ok(body.company.id); server.close(); });
+test('login returns a public user and a company-scoped token', async () => { if (!db.users.length) await (await import('./store.js')).seedOwner(); const seededUser = db.users.find(user => user.email === 'admin@demo.local'); assert.ok(seededUser); const server = await runningApp(); const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@demo.local', password: 'Admin123!' }) }); const body = await response.json() as { token: string; user: { id: string; name: string; email: string; passwordHash?: string }; company: { id: string } }; assert.equal(response.status, 200); assert.ok(body.token); assert.ok(body.company.id); assert.equal(body.user.passwordHash, undefined); assert.equal(body.user.id, seededUser.id); assert.equal(body.user.name, seededUser.name); assert.equal(body.user.email, seededUser.email); server.close(); });
+test('register, refresh and /me expose only public user fields; refresh rotates and logout revokes', async () => {
+	const server = await runningApp(); const base = `http://localhost:${(server.address() as { port: number }).port}/api/v1`;
+	const email = `public-user-${Date.now()}@demo.local`;
+	try {
+	const registered = await fetch(`${base}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, name: 'Public User', password: 'SecurePass123!', companyName: 'Public Company' }) });
+	assert.equal(registered.status, 201); const registerBody = await registered.json() as { token: string; refreshToken: string; user: { id: string; name: string; email: string; passwordHash?: string }; company: { id: string } };
+	assert.equal(registerBody.user.passwordHash, undefined); assert.equal(registerBody.user.name, 'Public User'); assert.equal(registerBody.user.email, email);
+	const auth = { Authorization: `Bearer ${registerBody.token}` };
+	const meResponse = await fetch(`${base}/me`, { headers: auth }); const meBody = await meResponse.json() as { user: { id: string; name: string; email: string; passwordHash?: string }; company: { id: string }; role: string };
+	assert.equal(meResponse.status, 200); assert.equal(meBody.user.passwordHash, undefined); assert.deepEqual(meBody.user, { id: registerBody.user.id, name: 'Public User', email: registerBody.user.email }); assert.equal(meBody.company.id, registerBody.company.id); assert.equal(meBody.role, 'owner');
+	const refreshResponse = await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: registerBody.refreshToken }) }); const refreshBody = await refreshResponse.json() as { token: string; refreshToken: string; user: { id: string; name: string; email: string; passwordHash?: string }; company: { id: string } };
+	assert.equal(refreshResponse.status, 200); assert.equal(refreshBody.user.passwordHash, undefined); assert.deepEqual(refreshBody.user, meBody.user); assert.equal(refreshBody.company.id, registerBody.company.id); assert.notEqual(refreshBody.refreshToken, registerBody.refreshToken);
+	const replayedRefresh = await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: registerBody.refreshToken }) }); assert.equal(replayedRefresh.status, 401);
+	const logout = await fetch(`${base}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${refreshBody.token}` } }); assert.equal(logout.status, 200);
+	const revokedRefresh = await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: refreshBody.refreshToken }) }); assert.equal(revokedRefresh.status, 401);
+	} finally { server.close(); }
+});
+test('demo seed does not create users or companies in production', async () => {
+	const users = [...db.users]; const companies = [...db.companies]; const memberships = [...db.memberships];
+	try {
+		db.users.length = 0; db.companies.length = 0; db.memberships.length = 0;
+		await (await import('./store.js')).seedOwner({ NODE_ENV: 'production' });
+		assert.equal(db.users.length, 0); assert.equal(db.companies.length, 0); assert.equal(db.memberships.length, 0);
+	} finally {
+		db.users.splice(0, db.users.length, ...users); db.companies.splice(0, db.companies.length, ...companies); db.memberships.splice(0, db.memberships.length, ...memberships);
+	}
+});
 test('company data is isolated and critical inventory flow is idempotent', async () => {
 	if (!db.users.length) await (await import('./store.js')).seedOwner();
 	const server = await runningApp(); const base = `http://localhost:${(server.address() as { port: number }).port}/api/v1`;

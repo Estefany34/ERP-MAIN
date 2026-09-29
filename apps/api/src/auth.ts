@@ -38,7 +38,7 @@ export function issueToken(userId: string, companyId: string, role: Role, sessio
 }
 
 export function issueRefreshToken(userId: string, companyId: string, sessionId: string) {
-  return jwt.sign({ sub: userId, companyId, sid: sessionId, tokenType: 'refresh' }, secret(), { expiresIn: '14d' });
+  return jwt.sign({ jti: id(), sub: userId, companyId, sid: sessionId, tokenType: 'refresh' }, secret(), { expiresIn: '14d' });
 }
 
 export async function verifyPassword(password: string, hash: string) { return bcrypt.compare(password, hash); }

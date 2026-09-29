@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { db, id, now, type Customer, type Product } from './store.js';
+import { db, id, now, toPublicUser, type Customer, type Product } from './store.js';
 import { asyncRoute, parseBody } from './http.js';
 import { bomSchema, branchSchema, customerSchema, documentSchema, documentUploadSchema, employeeSchema, incidentSchema, loginSchema, movementSchema, paymentSchema, productionSchema, productSchema, projectSchema, purchaseSchema, quoteSchema, saleSchema, supplierSchema, taskSchema, transactionSchema, warehouseSchema } from './validation.js';
 import { createSession, hashPassword, hashRefreshToken, issueRefreshToken, issueToken, requireAuth, requireRole, verifyPassword, type AuthRequest } from './auth.js';
@@ -16,7 +16,7 @@ router.post('/auth/login', asyncRoute(async (req, res) => {
   const refreshHash = await hashRefreshToken(session.refreshToken);
   const activeSession = db.sessions.find(item => item.id === session.sessionId);
   if (activeSession) activeSession.refreshTokenHash = refreshHash;
-  res.json({ token: issueToken(user.id, membership.companyId, membership.role, session.sessionId), refreshToken: session.refreshToken, user: { id: user.id, name: user.name, email: user.email }, company: db.companies.find(item => item.id === membership.companyId) });
+  res.json({ token: issueToken(user.id, membership.companyId, membership.role, session.sessionId), refreshToken: session.refreshToken, user: toPublicUser(user), company: db.companies.find(item => item.id === membership.companyId) });
 }));
 router.post('/auth/register', asyncRoute(async (req, res) => {
   if (!isPublicRegistrationAllowed()) {
@@ -32,7 +32,7 @@ router.post('/auth/register', asyncRoute(async (req, res) => {
   const refreshHash = await hashRefreshToken(session.refreshToken);
   const activeSession = db.sessions.find(item => item.id === session.sessionId);
   if (activeSession) activeSession.refreshTokenHash = refreshHash;
-  res.status(201).json({ token: issueToken(user.id, company.id, 'owner', session.sessionId), refreshToken: session.refreshToken, user: { id: user.id, name: user.name, email: user.email }, company });
+  res.status(201).json({ token: issueToken(user.id, company.id, 'owner', session.sessionId), refreshToken: session.refreshToken, user: toPublicUser(user), company });
 }));
 router.post('/auth/refresh', asyncRoute(async (req, res) => {
   const refreshToken = typeof req.body === 'object' && req.body && 'refreshToken' in req.body ? String((req.body as { refreshToken?: string }).refreshToken ?? '') : '';
@@ -49,7 +49,9 @@ router.post('/auth/refresh', asyncRoute(async (req, res) => {
     session.lastUsedAt = now();
     const membership = db.memberships.find(item => item.userId === session.userId && item.companyId === session.companyId);
     if (!membership) return res.status(403).json({ error: { code: 'NO_MEMBERSHIP', message: 'Company membership required' } });
-    res.json({ token: issueToken(session.userId, session.companyId, membership.role, session.id), refreshToken: nextRefreshToken, user: db.users.find(item => item.id === session.userId), company: db.companies.find(item => item.id === session.companyId) });
+    const user = db.users.find(item => item.id === session.userId);
+    if (!user) return res.status(401).json({ error: { code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or expired' } });
+    res.json({ token: issueToken(session.userId, session.companyId, membership.role, session.id), refreshToken: nextRefreshToken, user: toPublicUser(user), company: db.companies.find(item => item.id === session.companyId) });
   } catch {
     res.status(401).json({ error: { code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or expired' } });
   }
@@ -61,7 +63,7 @@ router.post('/auth/logout', requireAuth, asyncRoute(async (req: AuthRequest, res
 }));
 
 router.use(requireAuth);
-router.get('/me', (req: AuthRequest, res) => res.json({ user: db.users.find(item => item.id === req.user!.id), company: db.companies.find(item => item.id === req.user!.companyId), role: req.user!.role }));
+router.get('/me', (req: AuthRequest, res) => { const user = db.users.find(item => item.id === req.user!.id); res.json({ user: user ? toPublicUser(user) : undefined, company: db.companies.find(item => item.id === req.user!.companyId), role: req.user!.role }); });
 router.get('/customers', (req: AuthRequest, res) => { const search = String(req.query.search ?? '').toLowerCase(); res.json(db.customers.filter(item => item.companyId === req.user!.companyId && (!search || item.name.toLowerCase().includes(search) || item.email?.toLowerCase().includes(search)))); });
 router.post('/customers', requireRole('owner', 'admin', 'sales'), (req: AuthRequest, res) => { const input = parseBody(customerSchema, req.body); const customer: Customer = { id: id(), companyId: req.user!.companyId, ...input, createdAt: now() }; db.customers.push(customer); db.audits.push({ id: id(), companyId: req.user!.companyId, userId: req.user!.id, action: 'create', entity: 'customer', entityId: customer.id, createdAt: now() }); res.status(201).json(customer); });
 router.get('/products', (req: AuthRequest, res) => res.json(db.products.filter(item => item.companyId === req.user!.companyId).map(product => ({ ...product, stock: db.movements.filter(move => move.companyId === product.companyId && move.productId === product.id).reduce((sum, move) => sum + (move.type === 'out' ? -move.quantity : move.quantity), 0) }))));

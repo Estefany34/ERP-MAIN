@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 export type Role = 'owner' | 'admin' | 'sales' | 'inventory' | 'viewer';
 export type Company = { id: string; name: string; currency: string; enabledModules: string[]; createdAt: string };
 export type User = { id: string; email: string; name: string; passwordHash: string; createdAt: string };
+export type PublicUser = Pick<User, 'id' | 'name' | 'email'>;
+export const toPublicUser = (user: User): PublicUser => ({ id: user.id, name: user.name, email: user.email });
 export type Membership = { userId: string; companyId: string; role: Role };
 export type Session = {
   id: string;
@@ -42,9 +44,10 @@ export const db = {
   products: [] as Product[], movements: [] as InventoryMovement[], sales: [] as Sale[], quotes: [] as Quote[], payments: [] as Payment[], suppliers: [] as Supplier[], purchases: [] as Purchase[], employees: [] as Employee[], projects: [] as Project[], tasks: [] as Task[], financialTransactions: [] as FinancialTransaction[], notifications: [] as Notification[], documents: [] as DocumentRecord[], incidents: [] as Incident[], productionOrders: [] as ProductionOrder[], branches: [] as Branch[], warehouses: [] as Warehouse[], billsOfMaterial: [] as BillOfMaterial[], audits: [] as AuditLog[]
 };
 
-export async function seedOwner() {
+export async function seedOwner(env = process.env) {
+  if (env.NODE_ENV === 'production') return;
   if (db.users.length > 0) return;
-  const user: User = { id: randomUUID(), email: 'admin@demo.local', name: 'Administrador', passwordHash: await bcrypt.hash(process.env.DEMO_PASSWORD ?? 'Admin123!', 12), createdAt: new Date().toISOString() };
+  const user: User = { id: randomUUID(), email: 'admin@demo.local', name: 'Administrador', passwordHash: await bcrypt.hash(env.DEMO_PASSWORD ?? 'Admin123!', 12), createdAt: new Date().toISOString() };
   const company: Company = { id: randomUUID(), name: 'Empresa demo', currency: 'USD', enabledModules: ['crm', 'sales', 'inventory', 'purchases', 'reports'], createdAt: new Date().toISOString() };
   db.users.push(user); db.companies.push(company); db.memberships.push({ userId: user.id, companyId: company.id, role: 'owner' });
 }
