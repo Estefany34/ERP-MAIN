@@ -128,17 +128,10 @@ export function AppShell({
               <View style={[StyleSheet.absoluteFillObject, styles.ambientLayers]}>
                 <LinearGradient
                   colors={theme.colors.contentAmbient}
-                  locations={[0, 0.3, 0.65, 1]}
+                  locations={[0, 0.25, 0.6, 1]}
                   start={{ x: 1, y: 0 }}
                   end={{ x: 0, y: 1 }}
                   style={styles.ambientTopRight}
-                />
-                <LinearGradient
-                  colors={theme.colors.contentAmbientSecondary}
-                  locations={[0, 0.45, 1]}
-                  start={{ x: 0, y: 1 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.ambientBottomLeft}
                 />
               </View>
             ) : null}
@@ -188,11 +181,7 @@ const styles = StyleSheet.create({
   contentArea: { flex: 1, position: 'relative' },
   ambientLayers: { pointerEvents: 'none' },
   ambientTopRight: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: '65%',
-    height: '60%',
+    ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
   },
   ambientBottomLeft: {
