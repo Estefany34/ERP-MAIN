@@ -80,7 +80,7 @@ export default function App() {
 }
 
 function ERPApp() {
-  const { theme } = useFanixTheme();
+  const { theme, isDark } = useFanixTheme();
   const styles = createStyles(theme);
   const { width } = useWindowDimensions();
   const compact = width < 640;
@@ -213,10 +213,13 @@ function ERPApp() {
   if (!token) {
     return (
       <SafeAreaView style={styles.loginPage}>
-        <LinearGradient colors={theme.colors.loginGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.loginGradient} />
+        <View style={[StyleSheet.absoluteFillObject, styles.ambientLayers]}>
+          <LinearGradient colors={theme.colors.loginGradient} locations={isDark ? [0, 0.36, 0.72, 1] : undefined} start={isDark ? { x: 1, y: 0 } : { x: 0, y: 0 }} end={isDark ? { x: 0, y: 1 } : { x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
+          {isDark ? <LinearGradient colors={theme.colors.loginAmbientSecondary} locations={[0, 0.48, 1]} start={{ x: 0, y: 1 }} end={{ x: 0.9, y: 0.1 }} style={StyleSheet.absoluteFillObject} /> : null}
+        </View>
         <View style={styles.loginCard}>
           <View style={styles.brandHeader}>
-            <FanixLogo compact={compact} />
+            <FanixLogo compact={width < 420} size="login" variant={isDark ? 'inverse' : 'default'} />
           </View>
 
           <Text style={styles.title}>Acceso seguro</Text>
@@ -396,8 +399,9 @@ function createStyles(theme: FanixTheme) {
     left: 0,
     pointerEvents: 'none',
   },
+  ambientLayers: { pointerEvents: 'none' },
   loginCard: {
-    width: '100%',
+    width: '92%',
     maxWidth: 460,
     backgroundColor: theme.colors.surfaceElevated,
     borderRadius: theme.radius.lg,
@@ -405,13 +409,9 @@ function createStyles(theme: FanixTheme) {
     borderColor: theme.colors.border,
     padding: 28,
     zIndex: 1,
-    shadowColor: theme.colors.sidebarBackground,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.2,
-    shadowRadius: 28,
-    elevation: 8,
+    ...theme.shadows.md,
   },
-  brandHeader: { marginBottom: 16, alignItems: 'flex-start' },
+  brandHeader: { marginBottom: 16, alignItems: 'center' },
   title: { color: theme.colors.textPrimary, fontSize: 29, lineHeight: 36, fontWeight: '700', marginBottom: 7 },
   subtitle: { color: theme.colors.textSecondary, fontSize: 14, marginBottom: 22, lineHeight: 21 },
   input: {
@@ -439,7 +439,7 @@ function createStyles(theme: FanixTheme) {
   },
   passwordInput: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 12, color: theme.colors.textPrimary, fontSize: 15 },
   toggleButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
-  toggleText: { color: theme.colors.accent, fontWeight: '700' },
+  toggleText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: '500' },
   primaryButton: {
     backgroundColor: theme.colors.primary,
     borderRadius: theme.radius.md,

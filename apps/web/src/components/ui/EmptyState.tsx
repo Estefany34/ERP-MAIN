@@ -5,9 +5,9 @@ import { useFanixTheme } from '../../theme/FanixThemeProvider';
 export function EmptyState({ title, description }: { title: string; description?: string }) {
   const { theme } = useFanixTheme();
   return (
-    <View style={[styles.container, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceSecondary }]}>
-      <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
-      {description ? <Text style={[styles.description, { color: theme.colors.textSecondary }]}>{description}</Text> : null}
+    <View style={[styles.container, { borderColor: theme.colors.divider, backgroundColor: theme.colors.emptySurface }]}>
+      <Text style={[styles.title, { color: theme.colors.textSecondary }]}>{title}</Text>
+      {description ? <Text style={[styles.description, { color: theme.colors.textMuted }]}>{description}</Text> : null}
     </View>
   );
 }

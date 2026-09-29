@@ -6,7 +6,7 @@ type CardVariant = 'default' | 'elevated' | 'interactive';
 
 export function Card({ children, style, variant = 'default' }: { children: React.ReactNode; style?: ViewStyle; variant?: CardVariant }) {
   const { theme } = useFanixTheme();
-  return <View style={[styles.card, { backgroundColor: variant === 'elevated' ? theme.colors.surfaceElevated : theme.colors.surface, borderColor: theme.colors.border, shadowColor: theme.colors.sidebarBackground }, variant === 'interactive' && styles.interactive, style]}>{children}</View>;
+  return <View style={[styles.card, theme.shadows.sm, { backgroundColor: variant === 'elevated' ? theme.colors.surfaceElevated : theme.colors.surface, borderColor: theme.colors.border }, variant === 'interactive' && styles.interactive, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
