@@ -217,7 +217,7 @@ function ERPApp() {
           {isDark ? (
             <LinearGradient
               colors={theme.colors.loginGradient}
-              locations={[0, 0.3, 0.65, 1]}
+              locations={[0, 0.25, 0.6, 1]}
               start={{ x: 1, y: 0 }}
               end={{ x: 0, y: 1 }}
               style={styles.ambientTopRight}
@@ -402,11 +402,7 @@ function createStyles(theme: FanixTheme) {
   },
   ambientLayers: { pointerEvents: 'none' },
   ambientTopRight: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: '65%',
-    height: '60%',
+    ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
   },
   ambientBottomLeft: {
