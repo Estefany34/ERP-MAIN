@@ -214,8 +214,26 @@ function ERPApp() {
     return (
       <SafeAreaView style={styles.loginPage}>
         <View style={[StyleSheet.absoluteFillObject, styles.ambientLayers]}>
-          <LinearGradient colors={theme.colors.loginGradient} locations={isDark ? [0, 0.36, 0.72, 1] : undefined} start={isDark ? { x: 1, y: 0 } : { x: 0, y: 0 }} end={isDark ? { x: 0, y: 1 } : { x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
-          {isDark ? <LinearGradient colors={theme.colors.loginAmbientSecondary} locations={[0, 0.48, 1]} start={{ x: 0, y: 1 }} end={{ x: 0.9, y: 0.1 }} style={StyleSheet.absoluteFillObject} /> : null}
+          {isDark ? (
+            <>
+              <LinearGradient
+                colors={theme.colors.loginGradient}
+                locations={[0, 0.3, 0.65, 1]}
+                start={{ x: 1, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.ambientTopRight}
+              />
+              <LinearGradient
+                colors={theme.colors.loginAmbientSecondary}
+                locations={[0, 0.45, 1]}
+                start={{ x: 0, y: 1 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.ambientBottomLeft}
+              />
+            </>
+          ) : (
+            <LinearGradient colors={theme.colors.loginGradient} style={StyleSheet.absoluteFillObject} />
+          )}
         </View>
         <View style={styles.loginCard}>
           <View style={styles.brandHeader}>
@@ -391,15 +409,23 @@ function createStyles(theme: FanixTheme) {
     alignItems: 'center',
     padding: 22,
   },
-  loginGradient: {
+  ambientLayers: { pointerEvents: 'none' },
+  ambientTopRight: {
     position: 'absolute',
     top: 0,
     right: 0,
-    bottom: 0,
-    left: 0,
+    width: '65%',
+    height: '60%',
     pointerEvents: 'none',
   },
-  ambientLayers: { pointerEvents: 'none' },
+  ambientBottomLeft: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: '50%',
+    height: '45%',
+    pointerEvents: 'none',
+  },
   loginCard: {
     width: '92%',
     maxWidth: 460,

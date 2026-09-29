@@ -126,8 +126,20 @@ export function AppShell({
           <View style={[styles.contentArea, { backgroundColor: theme.colors.background }]}>
             {isDark ? (
               <View style={[StyleSheet.absoluteFillObject, styles.ambientLayers]}>
-                <LinearGradient colors={theme.colors.contentAmbient} locations={[0, 0.36, 0.72, 1]} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFillObject} />
-                <LinearGradient colors={theme.colors.contentAmbientSecondary} locations={[0, 0.48, 1]} start={{ x: 0, y: 1 }} end={{ x: 0.9, y: 0.1 }} style={StyleSheet.absoluteFillObject} />
+                <LinearGradient
+                  colors={theme.colors.contentAmbient}
+                  locations={[0, 0.3, 0.65, 1]}
+                  start={{ x: 1, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={styles.ambientTopRight}
+                />
+                <LinearGradient
+                  colors={theme.colors.contentAmbientSecondary}
+                  locations={[0, 0.45, 1]}
+                  start={{ x: 0, y: 1 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.ambientBottomLeft}
+                />
               </View>
             ) : null}
             <ScrollView contentContainerStyle={[styles.content, compact && styles.contentCompact]}>{children}</ScrollView>
@@ -175,6 +187,22 @@ const styles = StyleSheet.create({
   main: { flex: 1 },
   contentArea: { flex: 1, position: 'relative' },
   ambientLayers: { pointerEvents: 'none' },
+  ambientTopRight: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: '65%',
+    height: '60%',
+    pointerEvents: 'none',
+  },
+  ambientBottomLeft: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: '50%',
+    height: '45%',
+    pointerEvents: 'none',
+  },
   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 20, paddingHorizontal: 28, paddingVertical: 16, borderBottomWidth: 1 },
   topbarCompact: { flexDirection: 'column', alignItems: 'flex-start', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
   topbarEyebrow: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },

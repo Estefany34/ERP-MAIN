@@ -42,7 +42,7 @@ export const darkTheme: typeof lightTheme = {
     sidebarBackground: '#091522', sidebarSurface: '#10233A', sidebarText: '#F2F6FB',
     sidebarTextMuted: '#AABBD0', sidebarActive: '#122D4B', sidebarBorder: '#20344E',
     inputBackground: '#0B1421', inputBorder: '#364A61', inputPlaceholder: '#90A3BA',
-    disabledSurface: '#202D3F', disabledText: '#91A2B8', loginGradient: ['rgba(14,92,203,0.22)', 'rgba(14,92,203,0.15)', 'rgba(14,92,203,0.06)', 'transparent'] as ColorStops, loginAmbientSecondary: ['rgba(14,92,203,0.07)', 'rgba(14,92,203,0.025)', 'transparent'] as ColorStops, contentAmbient: ['rgba(14,92,203,0.16)', 'rgba(14,92,203,0.09)', 'rgba(14,92,203,0.025)', 'transparent'] as ColorStops, contentAmbientSecondary: ['rgba(14,92,203,0.045)', 'rgba(14,92,203,0.015)', 'transparent'] as ColorStops,
+    disabledSurface: '#202D3F', disabledText: '#91A2B8', loginGradient: ['rgba(14,92,203,0.30)', 'rgba(14,92,203,0.16)', 'rgba(14,92,203,0.04)', 'transparent'] as ColorStops, loginAmbientSecondary: ['rgba(14,92,203,0.12)', 'rgba(14,92,203,0.03)', 'transparent'] as ColorStops, contentAmbient: ['rgba(14,92,203,0.24)', 'rgba(14,92,203,0.12)', 'rgba(14,92,203,0.03)', 'transparent'] as ColorStops, contentAmbientSecondary: ['rgba(14,92,203,0.10)', 'rgba(14,92,203,0.02)', 'transparent'] as ColorStops,
     dark: '#0A172B', darkSurface: '#111F34', darkSurfaceSecondary: '#162B46', white: '#FFFFFF',
   },
   shadows: {
