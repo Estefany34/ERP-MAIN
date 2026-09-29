@@ -13,7 +13,7 @@ export function EmptyState({ title, description }: { title: string; description?
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, alignItems: 'center', justifyContent: 'center', minHeight: 120, borderRadius: 12, borderWidth: 1 },
-  title: { fontSize: 16, fontWeight: '700' },
-  description: { marginTop: 8, textAlign: 'center' },
+  container: { padding: 22, alignItems: 'center', justifyContent: 'center', minHeight: 116, borderRadius: 10, borderWidth: 1 },
+  title: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  description: { maxWidth: 420, marginTop: 6, textAlign: 'center', lineHeight: 20 },
 });

@@ -2,19 +2,21 @@ import React from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { useFanixTheme } from '../../theme/FanixThemeProvider';
 
-export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+type CardVariant = 'default' | 'elevated' | 'interactive';
+
+export function Card({ children, style, variant = 'default' }: { children: React.ReactNode; style?: ViewStyle; variant?: CardVariant }) {
   const { theme } = useFanixTheme();
-  return <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, shadowColor: theme.colors.sidebarBackground }, style]}>{children}</View>;
+  return <View style={[styles.card, { backgroundColor: variant === 'elevated' ? theme.colors.surfaceElevated : theme.colors.surface, borderColor: theme.colors.border, shadowColor: theme.colors.sidebarBackground }, variant === 'interactive' && styles.interactive, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
-    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 1,
   },
+  interactive: { shadowOpacity: 0.09, elevation: 2 },
 });

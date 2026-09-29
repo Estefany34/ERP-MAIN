@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { FanixLogo } from './src/components/branding/FanixLogo';
 import { AppShell } from './src/components/layout/AppShell';
 import { Badge } from './src/components/ui/Badge';
@@ -81,7 +82,11 @@ export default function App() {
 function ERPApp() {
   const { theme } = useFanixTheme();
   const styles = createStyles(theme);
+  const { width } = useWindowDimensions();
+  const compact = width < 640;
   const [focusedField, setFocusedField] = useState('');
+  const [loginHovered, setLoginHovered] = useState(false);
+  const [createHovered, setCreateHovered] = useState(false);
   const [token, setToken] = useState('');
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
@@ -208,10 +213,10 @@ function ERPApp() {
   if (!token) {
     return (
       <SafeAreaView style={styles.loginPage}>
-        <View style={styles.loginGradient} />
+        <LinearGradient colors={theme.colors.loginGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.loginGradient} />
         <View style={styles.loginCard}>
           <View style={styles.brandHeader}>
-            <FanixLogo />
+            <FanixLogo compact={compact} />
           </View>
 
           <Text style={styles.title}>Acceso seguro</Text>
@@ -221,6 +226,7 @@ function ERPApp() {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
+            accessibilityLabel="Correo electrónico"
             value={email}
             onChangeText={setEmail}
             placeholder="Correo electrónico"
@@ -233,6 +239,7 @@ function ERPApp() {
           <View style={[styles.passwordWrap, focusedField === 'password' && styles.inputFocused]}>
             <TextInput
               secureTextEntry={!showPassword}
+              accessibilityLabel="Contraseña"
               value={password}
               onChangeText={setPassword}
               placeholder="Contraseña"
@@ -241,16 +248,26 @@ function ERPApp() {
               placeholderTextColor={theme.colors.inputPlaceholder}
               style={styles.passwordInput}
             />
-            <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.toggleButton}>
+            <Pressable onPress={() => setShowPassword((value) => !value)} accessibilityRole="button" accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} style={styles.toggleButton}>
               <Text style={styles.toggleText}>{showPassword ? 'Ocultar' : 'Mostrar'}</Text>
             </Pressable>
           </View>
 
-          <Pressable onPress={login} disabled={busy} style={[styles.primaryButton, busy && styles.primaryButtonDisabled]}>
+          <Pressable
+            onPress={login}
+            onFocus={() => setFocusedField('login')}
+            onBlur={() => setFocusedField('')}
+            onHoverIn={() => setLoginHovered(true)}
+            onHoverOut={() => setLoginHovered(false)}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: busy }}
+            style={({ pressed }) => [styles.primaryButton, loginHovered && !busy && styles.primaryButtonHovered, focusedField === 'login' && styles.buttonFocused, pressed && styles.buttonPressed, busy && styles.primaryButtonDisabled]}
+          >
             <Text style={[styles.primaryButtonText, busy && { color: theme.colors.disabledText }]}>{busy ? 'Iniciando sesión...' : 'Iniciar sesión'}</Text>
           </Pressable>
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text> : null}
 
           {__DEV__ ? (
             <View style={styles.hintRow}>
@@ -272,7 +289,7 @@ function ERPApp() {
       onSelect={loadModule}
       onLogout={() => { setToken(''); setError(''); setRows([]); setDashboard(null); }}
     >
-      {error ? <Card style={styles.notice}><Text style={styles.noticeText}>{error}</Text></Card> : null}
+      {error ? <Card style={styles.notice}><Text accessibilityRole="alert" style={styles.noticeText}>{error}</Text></Card> : null}
 
       {active === 'Dashboard' ? (
         <>
@@ -282,7 +299,7 @@ function ERPApp() {
             ))}
           </View>
 
-          <View style={styles.twoColumn}>
+          <View style={[styles.twoColumn, compact && styles.twoColumnCompact]}>
             <Card style={styles.cardSection}>
               <Text style={styles.sectionTitle}>Alertas de inventario</Text>
               {inventoryAlerts.length ? (
@@ -320,20 +337,31 @@ function ERPApp() {
         </>
       ) : (
         <Card style={styles.cardSection}>
-          <View style={styles.moduleHeader}>
+          <View style={[styles.moduleHeader, compact && styles.moduleHeaderCompact]}>
             <Text style={styles.sectionTitle}>{active}</Text>
-            <View style={styles.inlineCreate}>
+            <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
               <TextInput
                 value={formValue}
                 onChangeText={setFormValue}
                 placeholder={`Nuevo ${active.toLowerCase()}`}
+                accessibilityLabel={`Nuevo ${active.toLowerCase()}`}
                 onFocus={() => setFocusedField('new-record')}
                 onBlur={() => setFocusedField('')}
                 placeholderTextColor={theme.colors.inputPlaceholder}
                 style={[styles.formInput, focusedField === 'new-record' && styles.inputFocused]}
               />
-              <Pressable onPress={createRecord} disabled={busy || !formValue.trim()} style={[styles.secondaryButton, (busy || !formValue.trim()) && styles.primaryButtonDisabled]}>
-                <Text style={styles.secondaryButtonText}>{busy ? 'Guardando...' : 'Crear'}</Text>
+              <Pressable
+                onPress={createRecord}
+                onFocus={() => setFocusedField('create')}
+                onBlur={() => setFocusedField('')}
+                onHoverIn={() => setCreateHovered(true)}
+                onHoverOut={() => setCreateHovered(false)}
+                disabled={busy || !formValue.trim()}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy || !formValue.trim() }}
+                style={({ pressed }) => [styles.secondaryButton, createHovered && styles.secondaryButtonHovered, focusedField === 'create' && styles.buttonFocused, pressed && styles.buttonPressed, (busy || !formValue.trim()) && styles.primaryButtonDisabled]}
+              >
+                <Text style={[styles.secondaryButtonText, (busy || !formValue.trim()) && styles.secondaryButtonTextDisabled]}>{busy ? 'Guardando...' : 'Crear'}</Text>
               </Pressable>
             </View>
           </View>
@@ -358,35 +386,42 @@ function createStyles(theme: FanixTheme) {
     backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 22,
   },
   loginGradient: {
     position: 'absolute',
-    inset: 0,
-    backgroundColor: theme.colors.loginBackdrop,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    pointerEvents: 'none',
   },
   loginCard: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 460,
     backgroundColor: theme.colors.surfaceElevated,
-    borderRadius: theme.radius.xl,
+    borderRadius: theme.radius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: 30,
+    padding: 28,
     zIndex: 1,
-    ...theme.shadows.md,
     shadowColor: theme.colors.sidebarBackground,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.2,
+    shadowRadius: 28,
+    elevation: 8,
   },
-  brandHeader: { marginBottom: 18, alignItems: 'center', backgroundColor: theme.colors.logoSurface, borderRadius: 8, overflow: 'hidden' },
-  title: { color: theme.colors.textPrimary, fontSize: 34, fontWeight: '800', marginBottom: 8 },
-  subtitle: { color: theme.colors.textSecondary, fontSize: 15, marginBottom: 24, lineHeight: 22 },
+  brandHeader: { marginBottom: 16, alignItems: 'flex-start' },
+  title: { color: theme.colors.textPrimary, fontSize: 29, lineHeight: 36, fontWeight: '700', marginBottom: 7 },
+  subtitle: { color: theme.colors.textSecondary, fontSize: 14, marginBottom: 22, lineHeight: 21 },
   input: {
     backgroundColor: theme.colors.inputBackground,
     borderWidth: 1,
     borderColor: theme.colors.inputBorder,
     borderRadius: theme.radius.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    minHeight: 48,
     marginBottom: 14,
     color: theme.colors.textPrimary,
     fontSize: 15,
@@ -398,57 +433,75 @@ function createStyles(theme: FanixTheme) {
     borderWidth: 1,
     borderColor: theme.colors.inputBorder,
     borderRadius: theme.radius.md,
+    minHeight: 48,
     marginBottom: 18,
     overflow: 'hidden',
   },
-  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 12, color: theme.colors.textPrimary, fontSize: 15 },
-  toggleButton: { paddingHorizontal: 12, paddingVertical: 12 },
+  passwordInput: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 12, color: theme.colors.textPrimary, fontSize: 15 },
+  toggleButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
   toggleText: { color: theme.colors.accent, fontWeight: '700' },
   primaryButton: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: theme.colors.primary,
     borderRadius: theme.radius.md,
-    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    minHeight: 48,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonDisabled: { backgroundColor: theme.colors.disabledSurface },
+  primaryButtonHovered: { backgroundColor: theme.colors.primaryHover, borderColor: theme.colors.primaryHover, shadowColor: theme.colors.accent, shadowOpacity: 0.14, shadowRadius: 8, elevation: 2 },
+  primaryButtonDisabled: { backgroundColor: theme.colors.disabledSurface, borderColor: theme.colors.border },
   primaryButtonText: { color: theme.colors.textInverse, fontSize: 15, fontWeight: '700' },
-  errorText: { marginTop: 14, color: theme.colors.danger, fontWeight: '600' },
-  hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },
-  hintText: { color: theme.colors.textSecondary, fontSize: 12 },
-  notice: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder, borderWidth: 1, padding: 12 },
-  noticeText: { color: theme.colors.danger, fontWeight: '700' },
+  buttonFocused: { borderWidth: 2, borderColor: theme.colors.accentBright, shadowColor: theme.colors.accent, shadowOpacity: 0.16, shadowRadius: 8, elevation: 2 },
+  buttonPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
+  errorText: { marginTop: 14, color: theme.colors.danger, fontWeight: '600', lineHeight: 20 },
+  hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 18 },
+  hintText: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  notice: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder, borderWidth: 1, padding: 13 },
+  noticeText: { color: theme.colors.danger, fontWeight: '600', lineHeight: 20 },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   twoColumn: { flexDirection: 'row', gap: 18 },
-  cardSection: { flex: 1, padding: 18 },
-  sectionTitle: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 14 },
-  listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.divider },
-  listTitle: { color: theme.colors.textPrimary, fontWeight: '700' },
-  listMeta: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 4 },
-  activityItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  dot: { width: 10, height: 10, borderRadius: 99, backgroundColor: theme.colors.accent },
+  twoColumnCompact: { flexDirection: 'column' },
+  cardSection: { flex: 1, padding: 20 },
+  sectionTitle: { color: theme.colors.textPrimary, fontSize: 17, lineHeight: 24, fontWeight: '700', marginBottom: 14 },
+  listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.divider },
+  listTitle: { color: theme.colors.textPrimary, fontWeight: '600', lineHeight: 20 },
+  listMeta: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  activityItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  dot: { width: 8, height: 8, borderRadius: 99, backgroundColor: theme.colors.accent },
   activityTextWrap: { flex: 1 },
-  activityTitle: { color: theme.colors.textPrimary, fontWeight: '700' },
-  activityMeta: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 2 },
-  moduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
-  inlineCreate: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  activityTitle: { color: theme.colors.textPrimary, fontWeight: '600', lineHeight: 20 },
+  activityMeta: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
+  moduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' },
+  moduleHeaderCompact: { alignItems: 'flex-start' },
+  inlineCreate: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  inlineCreateCompact: { width: '100%' },
   formInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 42,
     backgroundColor: theme.colors.inputBackground,
     borderColor: theme.colors.inputBorder,
     borderWidth: 1,
     borderRadius: theme.radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    minWidth: 180,
+    paddingVertical: 9,
     color: theme.colors.textPrimary,
   },
   secondaryButton: {
     backgroundColor: theme.colors.accentSoft,
     borderRadius: theme.radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: theme.colors.infoBorder,
+    borderWidth: 1,
+    minHeight: 42,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  secondaryButtonText: { color: theme.colors.accent, fontWeight: '700' },
-  inputFocused: { borderColor: theme.colors.accent },
+  secondaryButtonHovered: { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.accent },
+  secondaryButtonText: { color: theme.colors.accent, fontWeight: '700', lineHeight: 18 },
+  secondaryButtonTextDisabled: { color: theme.colors.disabledText },
+  inputFocused: { borderColor: theme.colors.accentBright, borderWidth: 1.5, shadowColor: theme.colors.accent, shadowOpacity: 0.12, shadowRadius: 6, elevation: 1 },
 });
 }
