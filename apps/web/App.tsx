@@ -215,22 +215,13 @@ function ERPApp() {
       <SafeAreaView style={styles.loginPage}>
         <View style={[StyleSheet.absoluteFillObject, styles.ambientLayers]}>
           {isDark ? (
-            <>
-              <LinearGradient
-                colors={theme.colors.loginGradient}
-                locations={[0, 0.3, 0.65, 1]}
-                start={{ x: 1, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={styles.ambientTopRight}
-              />
-              <LinearGradient
-                colors={theme.colors.loginAmbientSecondary}
-                locations={[0, 0.45, 1]}
-                start={{ x: 0, y: 1 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.ambientBottomLeft}
-              />
-            </>
+            <LinearGradient
+              colors={theme.colors.loginGradient}
+              locations={[0, 0.3, 0.65, 1]}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.ambientTopRight}
+            />
           ) : (
             <LinearGradient colors={theme.colors.loginGradient} style={StyleSheet.absoluteFillObject} />
           )}
