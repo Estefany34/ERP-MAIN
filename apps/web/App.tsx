@@ -222,6 +222,28 @@ function ERPApp() {
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo eliminar el registro'); } finally { setBusy(false); }
   }
 
+  async function runContextAction(row: Record<string, unknown>) {
+    if (!row.id) return;
+    const actionPath = active === 'Incidencias'
+      ? `incidents/${row.id}/resolve`
+      : active === 'Notificaciones'
+        ? `notifications/${row.id}/read`
+        : active === 'Finanzas'
+          ? `finance/transactions/${row.id}/pay`
+          : '';
+    if (!actionPath) return;
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch(`${API}/${actionPath}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo completar la acción');
+      setSuccess(active === 'Incidencias' ? 'Incidencia resuelta.' : active === 'Notificaciones' ? 'Notificación marcada como leída.' : 'Movimiento marcado como pagado.');
+      await loadModule(active);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo completar la acción');
+    } finally { setBusy(false); }
+  }
+
   useEffect(() => {
     if (!token) return;
     fetch(`${API}/dashboard`, {
@@ -451,7 +473,7 @@ function ERPApp() {
             <EmptyState title="Sin registros" description={`No hay información disponible en ${active.toLowerCase()} en este momento.`} />
           ) : null}
 
-          {!loadingModule && visibleRows.length > 0 ? <DataTable rows={visibleRows as Record<string, unknown>[]} columns={tableColumns} onEdit={canCreate && ['Clientes','Productos','Proveedores','Empleados'].includes(active) ? startEdit : undefined} onDelete={canManage && ['Clientes','Productos','Proveedores'].includes(active) ? deleteRecord : undefined} /> : null}
+          {!loadingModule && visibleRows.length > 0 ? <DataTable rows={visibleRows as Record<string, unknown>[]} columns={tableColumns} onEdit={canCreate && ['Clientes','Productos','Proveedores','Empleados'].includes(active) ? startEdit : undefined} onDelete={canManage && ['Clientes','Productos','Proveedores'].includes(active) ? deleteRecord : undefined} onAction={((active === 'Incidencias' && canManage) || active === 'Notificaciones' || (active === 'Finanzas' && canManage)) ? runContextAction : undefined} actionLabel={active === 'Incidencias' ? 'Resolver' : active === 'Notificaciones' ? 'Leída' : active === 'Finanzas' ? 'Pagar' : 'Acción'} /> : null}
         </Card>
       )}
     </AppShell>
