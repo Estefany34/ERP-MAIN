@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { API, clearTokens, loadTokens, saveTokens } from './api';
 
-type Session = { token: string; refreshToken: string; user: { id: string; name: string }; company: { name: string; currency: string }; role: string };
+type Session = { token: string; refreshToken: string; user: { id: string; name: string }; company: { name: string; currency: string; enabledModules: string[] }; role: string };
 const messages: Record<string, string> = {
   INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.', FORBIDDEN: 'Tu rol no permite esta acción.',
   VALIDATION_ERROR: 'Revisa los campos y sus valores.', INSUFFICIENT_STOCK: 'No hay existencias suficientes.',
@@ -52,6 +52,12 @@ export function useSession() {
     })();
     return () => { mounted = false; };
   }, []);
+  async function register(input: { email: string; password: string; name: string; companyName: string; planId: string; billingCycle: 'monthly' | 'annual'; modules: string[]; industry?: string; employeeCount?: number; country?: string; taxId?: string }) {
+    const { response, data } = await fetchJson('auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    if (!response.ok) throw new Error(errorMessage(data, response.status));
+    await saveTokens(data.token, data.refreshToken);
+    assign({ ...data, role: 'owner' });
+  }
   async function login(email: string, password: string) {
     const { response, data } = await fetchJson('auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim().toLowerCase(), password }) });
     if (!response.ok) throw new Error(errorMessage(data, response.status));
@@ -95,5 +101,5 @@ export function useSession() {
     try { await request('auth/logout', { method: 'POST' }); }
     finally { await clearTokens(); assign(null); }
   }
-  return { session, restoring, login, request, logout };
+  return { session, restoring, login, register, request, logout };
 }

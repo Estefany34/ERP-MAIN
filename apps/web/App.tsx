@@ -15,6 +15,7 @@ import { modules } from './src/modules/config';
 import { ModuleWorkspace } from './src/modules/ModuleWorkspace';
 import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvider';
 import type { FanixTheme } from './src/theme/fanixTheme';
+import { LandingPage } from './src/landing/LandingPage';
 
 export default function App() {
   return (
@@ -31,7 +32,8 @@ function ERPApp() {
   const compact = width < 640;
   const [focusedField, setFocusedField] = useState('');
   const [loginHovered, setLoginHovered] = useState(false);
-  const { session, restoring, login: signIn, request, logout } = useSession();
+  const { session, restoring, login: signIn, register: signUp, request, logout } = useSession();
+  const [publicView, setPublicView] = useState<'landing' | 'login'>('landing');
   const token = session?.token ?? '';
   const role = session?.role ?? 'viewer';
   const requestRef = useRef(request);
@@ -39,8 +41,10 @@ function ERPApp() {
   const dashboardVersion = useRef(0);
   const loginLock = useRef(false);
   const groups = ['Operaciones', 'Contactos', 'Administración', 'Sistema'];
+  const moduleEntitlement: Record<string, string> = { Clientes: 'crm', Productos: 'inventory', Inventario: 'inventory', Ventas: 'sales', Cotizaciones: 'sales', Compras: 'purchases', Proveedores: 'purchases', Finanzas: 'finance', Empleados: 'hr', Proyectos: 'projects', Reportes: 'reports' };
+  const enabledModules = session?.company.enabledModules ?? [];
   const groupOf = (label: string) => ['Productos', 'Inventario', 'Ventas', 'Cotizaciones', 'Compras', 'Proyectos'].includes(label) ? 'Operaciones' : ['Clientes', 'Proveedores'].includes(label) ? 'Contactos' : ['Finanzas', 'Empleados', 'Sucursales', 'Almacenes'].includes(label) ? 'Administración' : 'Sistema';
-  const moduleItems = [{ label: 'Inicio', value: 'Dashboard', group: 'General' }, ...modules.filter(module => !module.readRoles || module.readRoles.includes(role)).map(module => ({ label: module.label, value: module.label, group: groupOf(module.label) })).sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group))];
+  const moduleItems = [{ label: 'Inicio', value: 'Dashboard', group: 'General' }, ...modules.filter(module => (!module.readRoles || module.readRoles.includes(role)) && (!moduleEntitlement[module.label] || enabledModules.includes(moduleEntitlement[module.label]))).map(module => ({ label: module.label, value: module.label, group: groupOf(module.label) })).sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group))];
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
   const [email, setEmail] = useState(defaultDemoEmail);
@@ -106,6 +110,8 @@ function ERPApp() {
   const recentActivity = dashboard?.recentActivity ?? [];
 
   if (restoring) return <SafeAreaView style={styles.loginPage}><LoadingState label="Restaurando sesión…" /></SafeAreaView>;
+
+  if (!token && publicView === 'landing') return <LandingPage onLogin={() => setPublicView('login')} onRegister={signUp} />;
 
   if (!token) {
     return (
