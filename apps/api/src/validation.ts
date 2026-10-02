@@ -1,18 +1,23 @@
 import { z } from 'zod';
 
+const safeName = z.string().trim().min(2).max(120).regex(/^[\p{L}\p{M}0-9 .,'&()\-]+$/u, 'Contains invalid characters');
+const safeShortText = (max: number) => z.string().trim().max(max).regex(/^[\p{L}\p{M}0-9 .,'&()_\-/#]*$/u, 'Contains invalid characters');
+const phone = z.string().trim().min(7).max(20).regex(/^\+?[0-9 ()\-]+$/, 'Invalid phone number');
+const sku = z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9._\-]+$/, 'Invalid SKU');
+
 export const loginSchema = z.object({ email: z.string().email(), password: z.string().min(8) });
-export const customerSchema = z.object({ name: z.string().trim().min(2).max(120), email: z.string().email().optional(), phone: z.string().max(40).optional(), classification: z.string().max(40).optional() });
-export const productSchema = z.object({ sku: z.string().trim().min(1).max(40), name: z.string().trim().min(2).max(120), price: z.number().nonnegative(), cost: z.number().nonnegative(), stockMinimum: z.number().int().nonnegative().default(0) });
+export const customerSchema = z.object({ name: safeName, email: z.string().trim().email().max(254).optional(), phone: phone.optional(), classification: safeShortText(40).optional() });
+export const productSchema = z.object({ sku, name: safeName, price: z.number().nonnegative(), cost: z.number().nonnegative(), stockMinimum: z.number().int().nonnegative().default(0) });
 export const saleSchema = z.object({ customerId: z.string().uuid(), items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive(), unitPrice: z.number().nonnegative().optional() })).min(1) });
-export const supplierSchema = z.object({ name: z.string().trim().min(2).max(120), email: z.string().email().optional(), phone: z.string().max(40).optional() });
+export const supplierSchema = z.object({ name: safeName, email: z.string().trim().email().max(254).optional(), phone: phone.optional() });
 export const purchaseSchema = z.object({ supplierId: z.string().uuid(), items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive(), unitCost: z.number().nonnegative().optional() })).min(1) });
-export const employeeSchema = z.object({ name: z.string().trim().min(2).max(120), email: z.string().email().optional(), department: z.string().max(80).optional(), position: z.string().max(80).optional(), status: z.enum(['active', 'inactive']).default('active') });
+export const employeeSchema = z.object({ name: safeName, email: z.string().trim().email().max(254).optional(), department: safeShortText(80).optional(), position: safeShortText(80).optional(), status: z.enum(['active', 'inactive']).default('active') });
 export const projectSchema = z.object({ name: z.string().trim().min(2).max(120), customerId: z.string().uuid().optional(), ownerId: z.string().uuid(), startsOn: z.string().optional(), endsOn: z.string().optional() });
 export const taskSchema = z.object({ title: z.string().trim().min(2).max(160), assigneeId: z.string().uuid().optional(), dueOn: z.string().optional() });
-export const transactionSchema = z.object({ type: z.enum(['income', 'expense']), category: z.string().trim().min(2).max(80), amount: z.number().positive(), status: z.enum(['pending', 'paid']).default('pending'), reference: z.string().max(120).optional() });
+export const transactionSchema = z.object({ type: z.enum(['income', 'expense']), category: safeShortText(80).refine((value) => value.length >= 2, 'Too short'), amount: z.number().positive(), status: z.enum(['pending', 'paid']).default('pending'), reference: safeShortText(120).optional() });
 export const documentSchema = z.object({ name: z.string().trim().min(1).max(160), category: z.string().trim().min(1).max(80), storageKey: z.string().trim().min(1).max(500), entity: z.string().max(80).optional(), entityId: z.string().uuid().optional() });
 export const documentUploadSchema = z.object({ name: z.string().trim().min(1).max(160), category: z.string().trim().min(1).max(80), contentBase64: z.string().min(1), extension: z.string().max(10).optional(), entity: z.string().max(80).optional(), entityId: z.string().uuid().optional() });
-export const incidentSchema = z.object({ title: z.string().trim().min(2).max(160), description: z.string().max(2000).optional() });
+export const incidentSchema = z.object({ title: safeShortText(160).refine((value) => value.length >= 2, 'Too short'), description: z.string().trim().max(2000).optional() });
 export const productionSchema = z.object({ productId: z.string().uuid(), quantity: z.number().int().positive() });
 export const quoteSchema = z.object({ customerId: z.string().uuid(), items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive(), unitPrice: z.number().nonnegative() })).min(1), taxRate: z.number().min(0).max(1).default(0) });
 export const paymentSchema = z.object({ type: z.enum(['sale', 'purchase', 'income', 'expense']), referenceId: z.string().uuid(), amount: z.number().positive(), method: z.enum(['cash', 'bank_transfer', 'card', 'external']) });
