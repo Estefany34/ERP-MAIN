@@ -14,15 +14,15 @@ import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvide
 import type { FanixTheme } from './src/theme/fanixTheme';
 
 const moduleItems = [
-  { label: 'Dashboard', value: 'Dashboard' },
-  { label: 'Clientes', value: 'Clientes' },
-  { label: 'Productos', value: 'Productos' },
-  { label: 'Proveedores', value: 'Proveedores' },
-  { label: 'Empleados', value: 'Empleados' },
-  { label: 'Proyectos', value: 'Proyectos' },
-  { label: 'Finanzas', value: 'Finanzas' },
-  { label: 'Incidencias', value: 'Incidencias' },
-  { label: 'Notificaciones', value: 'Notificaciones' },
+  { label: 'Inicio', value: 'Dashboard', group: 'General' },
+  { label: 'Productos', value: 'Productos', group: 'Operaciones' },
+  { label: 'Proyectos', value: 'Proyectos', group: 'Operaciones' },
+  { label: 'Clientes', value: 'Clientes', group: 'Contactos' },
+  { label: 'Proveedores', value: 'Proveedores', group: 'Contactos' },
+  { label: 'Finanzas', value: 'Finanzas', group: 'Administración' },
+  { label: 'Empleados', value: 'Empleados', group: 'Administración' },
+  { label: 'Incidencias', value: 'Incidencias', group: 'Sistema' },
+  { label: 'Notificaciones', value: 'Notificaciones', group: 'Sistema' },
 ];
 
 const tableColumnsByModule: Record<string, { key: string; label: string }[]> = {
@@ -86,7 +86,6 @@ function ERPApp() {
   const compact = width < 640;
   const [focusedField, setFocusedField] = useState('');
   const [loginHovered, setLoginHovered] = useState(false);
-  const [createHovered, setCreateHovered] = useState(false);
   const [token, setToken] = useState('');
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
@@ -99,8 +98,12 @@ function ERPApp() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadingModule, setLoadingModule] = useState(false);
-  const [formValue, setFormValue] = useState('');
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [success, setSuccess] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [role, setRole] = useState('viewer');
 
   const tableColumns = useMemo(() => tableColumnsByModule[active] ?? tableColumnsByModule.Productos, [active]);
 
@@ -117,6 +120,10 @@ function ERPApp() {
       if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo iniciar sesión');
       setCompanyName(data.company?.name ?? '');
       setToken(data.token);
+      fetch(`${API}/me`, { headers: { Authorization: `Bearer ${data.token}` } })
+        .then((response) => response.json())
+        .then((profile) => setRole(profile.role ?? 'viewer'))
+        .catch(() => setRole('viewer'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
     } finally {
@@ -150,38 +157,91 @@ function ERPApp() {
     }
   }
 
-  async function createRecord() {
+  const formFields: Record<string, Array<{ key: string; label: string; type?: 'number' | 'email' }>> = {
+    Clientes: [{ key: 'name', label: 'Nombre' }, { key: 'email', label: 'Correo', type: 'email' }, { key: 'phone', label: 'Teléfono' }, { key: 'classification', label: 'Clasificación' }],
+    Productos: [{ key: 'name', label: 'Nombre' }, { key: 'sku', label: 'SKU' }, { key: 'price', label: 'Precio', type: 'number' }, { key: 'cost', label: 'Costo', type: 'number' }, { key: 'stockMinimum', label: 'Stock mínimo', type: 'number' }],
+    Proveedores: [{ key: 'name', label: 'Nombre' }, { key: 'email', label: 'Correo', type: 'email' }, { key: 'phone', label: 'Teléfono' }],
+    Empleados: [{ key: 'name', label: 'Nombre' }, { key: 'email', label: 'Correo', type: 'email' }, { key: 'department', label: 'Departamento' }, { key: 'position', label: 'Puesto' }],
+    Finanzas: [{ key: 'category', label: 'Categoría' }, { key: 'amount', label: 'Monto', type: 'number' }, { key: 'reference', label: 'Referencia' }],
+    Incidencias: [{ key: 'title', label: 'Título' }, { key: 'description', label: 'Descripción' }],
+  };
+
+  const visibleRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(term)));
+  }, [rows, search]);
+
+  function buildPayload() {
+    const value = (key: string) => form[key]?.trim() ?? '';
+    if (active === 'Productos') return { name: value('name'), sku: value('sku'), price: Number(value('price')), cost: Number(value('cost')), stockMinimum: Number(value('stockMinimum') || 0) };
+    if (active === 'Clientes') return { name: value('name'), ...(value('email') ? { email: value('email') } : {}), ...(value('phone') ? { phone: value('phone') } : {}), ...(value('classification') ? { classification: value('classification') } : {}) };
+    if (active === 'Proveedores') return { name: value('name'), ...(value('email') ? { email: value('email') } : {}), ...(value('phone') ? { phone: value('phone') } : {}) };
+    if (active === 'Empleados') return { name: value('name'), ...(value('email') ? { email: value('email') } : {}), ...(value('department') ? { department: value('department') } : {}), ...(value('position') ? { position: value('position') } : {}), status: 'active' };
+    if (active === 'Finanzas') return { type: 'income', category: value('category'), amount: Number(value('amount')), status: 'pending', ...(value('reference') ? { reference: value('reference') } : {}) };
+    if (active === 'Incidencias') return { title: value('title'), ...(value('description') ? { description: value('description') } : {}) };
+    return null;
+  }
+
+  function startEdit(row: Record<string, unknown>) {
+    if (!row.id) return;
+    setEditingId(String(row.id));
+    const next: Record<string, string> = {};
+    (formFields[active] ?? []).forEach((field) => { next[field.key] = String(row[field.key] ?? ''); });
+    setForm(next);
+  }
+
+  async function saveRecord() {
     const path = endpointMap[active];
-    if (!path || !formValue.trim()) return;
-    setBusy(true);
-    setError('');
-
-    const payload =
-      active === 'Finanzas'
-        ? { type: 'income', category: formValue, amount: 1, status: 'pending' }
-        : active === 'Incidencias'
-          ? { title: formValue }
-          : active === 'Productos'
-            ? { sku: `SKU-${Date.now()}`, name: formValue, price: 0, cost: 0, stockMinimum: 1 }
-            : active === 'Proyectos'
-              ? { name: formValue, ownerId: '00000000-0000-0000-0000-000000000000' }
-              : { name: formValue };
-
+    const payload = buildPayload();
+    if (!path || !payload) return;
+    const required = active === 'Productos' ? ['name', 'sku', 'price', 'cost'] : active === 'Finanzas' ? ['category', 'amount'] : [active === 'Incidencias' ? 'title' : 'name'];
+    if (required.some((key) => !form[key]?.trim())) { setError('Completa los campos obligatorios.'); return; }
+    setBusy(true); setError(''); setSuccess('');
     try {
-      const response = await fetch(`${API}/${path}`, {
-        method: 'POST',
+      const response = await fetch(`${API}/${path}${editingId ? `/${editingId}` : ''}`, {
+        method: editingId ? 'PATCH' : 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      const data = response.status === 204 ? null : await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo guardar el registro');
+      setForm({}); setEditingId(null); setSuccess(editingId ? 'Registro actualizado correctamente.' : 'Registro creado correctamente.');
+      await loadModule(active);
+    } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo guardar el registro'); } finally { setBusy(false); }
+  }
+
+  async function deleteRecord(row: Record<string, unknown>) {
+    const path = endpointMap[active]; if (!path || !row.id) return;
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch(`${API}/${path}/${row.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      const data = response.status === 204 ? null : await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo eliminar el registro');
+      setSuccess('Registro eliminado correctamente.'); await loadModule(active);
+    } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo eliminar el registro'); } finally { setBusy(false); }
+  }
+
+  async function runContextAction(row: Record<string, unknown>) {
+    if (!row.id) return;
+    const actionPath = active === 'Incidencias'
+      ? `incidents/${row.id}/resolve`
+      : active === 'Notificaciones'
+        ? `notifications/${row.id}/read`
+        : active === 'Finanzas'
+          ? `finance/transactions/${row.id}/pay`
+          : '';
+    if (!actionPath) return;
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch(`${API}/${actionPath}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo crear el registro');
-      setFormValue('');
+      if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo completar la acción');
+      setSuccess(active === 'Incidencias' ? 'Incidencia resuelta.' : active === 'Notificaciones' ? 'Notificación marcada como leída.' : 'Movimiento marcado como pagado.');
       await loadModule(active);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el registro');
-    } finally {
-      setBusy(false);
-    }
+      setError(err instanceof Error ? err.message : 'No se pudo completar la acción');
+    } finally { setBusy(false); }
   }
 
   useEffect(() => {
@@ -206,6 +266,9 @@ function ERPApp() {
     { label: 'Ventas', value: dashboard?.counts.sales ?? 0, delta: undefined },
     { label: 'Notificaciones', value: dashboard?.counts.unreadNotifications ?? 0, delta: undefined },
   ];
+
+  const canManage = ['owner', 'admin'].includes(role);
+  const canCreate = canManage || (role === 'sales' && ['Clientes', 'Proyectos', 'Incidencias'].includes(active)) || (role === 'inventory' && active === 'Productos') || active === 'Incidencias';
 
   const inventoryAlerts = dashboard?.lowStock ?? [];
   const recentActivity = dashboard?.recentActivity ?? [];
@@ -299,12 +362,31 @@ function ERPApp() {
       navItems={moduleItems}
       activeItem={active}
       onSelect={loadModule}
-      onLogout={() => { setToken(''); setError(''); setRows([]); setDashboard(null); }}
+      onLogout={() => { setToken(''); setRole('viewer'); setError(''); setSuccess(''); setRows([]); setDashboard(null); }}
     >
       {error ? <Card style={styles.notice}><Text accessibilityRole="alert" style={styles.noticeText}>{error}</Text></Card> : null}
+      {success ? <Card style={styles.successNotice}><Text accessibilityRole="alert" style={styles.successText}>{success}</Text></Card> : null}
 
       {active === 'Dashboard' ? (
         <>
+          <View style={styles.dashboardIntro}>
+            <View style={styles.dashboardIntroText}>
+              <Text style={styles.dashboardTitle}>Resumen general</Text>
+              <Text style={styles.dashboardSubtitle}>Consulta el estado de la operación y accede rápidamente a las tareas más frecuentes.</Text>
+            </View>
+            <View style={styles.quickActions}>
+              {[
+                { label: '+ Producto', module: 'Productos' },
+                { label: '+ Cliente', module: 'Clientes' },
+                { label: 'Ver finanzas', module: 'Finanzas' },
+              ].map((action) => (
+                <Pressable key={action.module} onPress={() => loadModule(action.module)} accessibilityRole="button" style={({ pressed }) => [styles.quickActionButton, pressed && styles.buttonPressed]}>
+                  <Text style={styles.quickActionText}>{action.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
           <View style={styles.statsRow}>
             {stats.map((stat) => (
               <StatCard key={stat.label} label={stat.label} value={stat.value} delta={stat.delta ?? undefined} />
@@ -350,41 +432,48 @@ function ERPApp() {
       ) : (
         <Card style={styles.cardSection}>
           <View style={[styles.moduleHeader, compact && styles.moduleHeaderCompact]}>
-            <Text style={styles.sectionTitle}>{active}</Text>
-            <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
-              <TextInput
-                value={formValue}
-                onChangeText={setFormValue}
-                placeholder={`Nuevo ${active.toLowerCase()}`}
-                accessibilityLabel={`Nuevo ${active.toLowerCase()}`}
-                onFocus={() => setFocusedField('new-record')}
-                onBlur={() => setFocusedField('')}
-                placeholderTextColor={theme.colors.inputPlaceholder}
-                style={[styles.formInput, focusedField === 'new-record' && styles.inputFocused]}
-              />
-              <Pressable
-                onPress={createRecord}
-                onFocus={() => setFocusedField('create')}
-                onBlur={() => setFocusedField('')}
-                onHoverIn={() => setCreateHovered(true)}
-                onHoverOut={() => setCreateHovered(false)}
-                disabled={busy || !formValue.trim()}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy || !formValue.trim() }}
-                style={({ pressed }) => [styles.secondaryButton, createHovered && styles.secondaryButtonHovered, focusedField === 'create' && styles.buttonFocused, pressed && styles.buttonPressed, (busy || !formValue.trim()) && styles.primaryButtonDisabled]}
-              >
-                <Text style={[styles.secondaryButtonText, (busy || !formValue.trim()) && styles.secondaryButtonTextDisabled]}>{busy ? 'Guardando...' : 'Crear'}</Text>
-              </Pressable>
+            <View>
+              <Text style={styles.sectionTitle}>{active}</Text>
+              <Text style={styles.moduleSubtitle}>Gestiona, consulta y actualiza la información de este módulo.</Text>
             </View>
+            <TextInput value={search} onChangeText={setSearch} placeholder="Buscar registros..." accessibilityLabel="Buscar registros" placeholderTextColor={theme.colors.inputPlaceholder} style={styles.searchInput} />
           </View>
+
+          {formFields[active] && canCreate ? (
+            <View style={styles.formPanel}>
+              <Text style={styles.formTitle}>{editingId ? 'Editar registro' : 'Nuevo registro'}</Text>
+              <View style={styles.formGrid}>
+                {formFields[active].map((field) => (
+                  <View key={field.key} style={styles.fieldWrap}>
+                    <Text style={styles.fieldLabel}>{field.label}{['name','sku','price','cost','category','amount','title'].includes(field.key) ? ' *' : ''}</Text>
+                    <TextInput
+                      value={form[field.key] ?? ''}
+                      onChangeText={(value) => setForm((current) => ({ ...current, [field.key]: value }))}
+                      keyboardType={field.type === 'number' ? 'numeric' : field.type === 'email' ? 'email-address' : 'default'}
+                      autoCapitalize={field.type === 'email' ? 'none' : 'sentences'}
+                      placeholder={field.label}
+                      placeholderTextColor={theme.colors.inputPlaceholder}
+                      style={styles.formInput}
+                    />
+                  </View>
+                ))}
+              </View>
+              <View style={styles.formActions}>
+                {editingId ? <Pressable onPress={() => { setEditingId(null); setForm({}); }} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Cancelar</Text></Pressable> : null}
+                <Pressable onPress={saveRecord} disabled={busy} style={[styles.secondaryButton, busy && styles.primaryButtonDisabled]}><Text style={styles.secondaryButtonText}>{busy ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear registro'}</Text></Pressable>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.moduleSubtitle}>{formFields[active] ? 'Tu rol actual tiene acceso de consulta, pero no permite crear registros en este módulo.' : 'Este módulo utiliza un flujo especializado y no admite creación genérica desde esta pantalla.'}</Text>
+          )}
 
           {loadingModule ? <LoadingState label="Cargando módulo..." /> : null}
 
-          {!loadingModule && (!rows || rows.length === 0) ? (
+          {!loadingModule && (!visibleRows || visibleRows.length === 0) ? (
             <EmptyState title="Sin registros" description={`No hay información disponible en ${active.toLowerCase()} en este momento.`} />
           ) : null}
 
-          {!loadingModule && rows.length > 0 ? <DataTable rows={rows as Record<string, string | number | null | undefined>[]} columns={tableColumns} /> : null}
+          {!loadingModule && visibleRows.length > 0 ? <DataTable rows={visibleRows as Record<string, unknown>[]} columns={tableColumns} onEdit={canCreate && ['Clientes','Productos','Proveedores','Empleados'].includes(active) ? startEdit : undefined} onDelete={canManage && ['Clientes','Productos','Proveedores'].includes(active) ? deleteRecord : undefined} onAction={((active === 'Incidencias' && canManage) || active === 'Notificaciones' || (active === 'Finanzas' && canManage)) ? runContextAction : undefined} actionLabel={active === 'Incidencias' ? 'Resolver' : active === 'Notificaciones' ? 'Leída' : active === 'Finanzas' ? 'Pagar' : 'Acción'} /> : null}
         </Card>
       )}
     </AppShell>
@@ -473,6 +562,15 @@ function createStyles(theme: FanixTheme) {
   hintText: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
   notice: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder, borderWidth: 1, padding: 13 },
   noticeText: { color: theme.colors.danger, fontWeight: '600', lineHeight: 20 },
+  successNotice: { backgroundColor: theme.colors.accentSoft, borderColor: theme.colors.infoBorder, borderWidth: 1, padding: 13 },
+  successText: { color: theme.colors.accent, fontWeight: '600', lineHeight: 20 },
+  dashboardIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' },
+  dashboardIntroText: { flex: 1, minWidth: 240 },
+  dashboardTitle: { color: theme.colors.textPrimary, fontSize: 22, lineHeight: 29, fontWeight: '700' },
+  dashboardSubtitle: { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 4, maxWidth: 620 },
+  quickActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  quickActionButton: { minHeight: 38, justifyContent: 'center', paddingHorizontal: 13, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.infoBorder, backgroundColor: theme.colors.accentSoft },
+  quickActionText: { color: theme.colors.accent, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   twoColumn: { flexDirection: 'row', gap: 18 },
   twoColumnCompact: { flexDirection: 'column' },
@@ -488,6 +586,16 @@ function createStyles(theme: FanixTheme) {
   activityMeta: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
   moduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' },
   moduleHeaderCompact: { alignItems: 'flex-start' },
+  moduleSubtitle: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: -8 },
+  searchInput: { minWidth: 220, minHeight: 42, backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 12, color: theme.colors.textPrimary },
+  formPanel: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: 16, marginBottom: 18 },
+  formTitle: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 12 },
+  formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  fieldWrap: { minWidth: 180, flexGrow: 1, flexBasis: 180 },
+  fieldLabel: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700', marginBottom: 5 },
+  formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  cancelButton: { minHeight: 42, paddingHorizontal: 14, justifyContent: 'center', borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.border },
+  cancelButtonText: { color: theme.colors.textSecondary, fontWeight: '700' },
   inlineCreate: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   inlineCreateCompact: { width: '100%' },
   formInput: {
