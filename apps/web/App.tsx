@@ -107,6 +107,16 @@ function ERPApp() {
   const [companyName, setCompanyName] = useState('');
 
   const tableColumns = useMemo(() => tableColumnsByModule[active] ?? tableColumnsByModule.Productos, [active]);
+  const createRoles: Record<string, Role[]> = {
+    Clientes: ['owner', 'admin', 'sales'],
+    Productos: ['owner', 'admin', 'inventory'],
+    Proveedores: ['owner', 'admin'],
+    Empleados: ['owner', 'admin'],
+    Proyectos: ['owner', 'admin', 'sales'],
+    Finanzas: ['owner', 'admin'],
+    Incidencias: ['owner', 'admin', 'sales', 'inventory', 'viewer'],
+  };
+  const canCreate = Boolean(role && createRoles[active]?.includes(role));
 
   async function login() {
     setBusy(true);
@@ -114,10 +124,7 @@ function ERPApp() {
     try {
       const data = await loginRequest(email, password);
       await saveTokens(data.token, data.refreshToken);
-      setCompanyName(data.company?.name ?? '');
-      setUser(data.user);
-      setToken(data.token);
-      setRefreshToken(data.refreshToken);
+      await establishSession(data.token, data.refreshToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
     } finally {
@@ -404,7 +411,7 @@ function ERPApp() {
         <Card style={styles.cardSection}>
           <View style={[styles.moduleHeader, compact && styles.moduleHeaderCompact]}>
             <Text style={styles.sectionTitle}>{active}</Text>
-            {active !== 'Notificaciones' ? <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
+            {canCreate ? <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
               <TextInput
                 value={formValue}
                 onChangeText={setFormValue}
