@@ -9,7 +9,7 @@ import { EmptyState } from './src/components/ui/EmptyState';
 import { LoadingState } from './src/components/ui/LoadingState';
 import { StatCard } from './src/components/ui/StatCard';
 import { DataTable } from './src/components/ui/Table';
-import { API, endpointMap, type Dashboard, type Resource } from './src/services/api';
+import { authenticatedRequest, clearTokens, endpointMap, loadTokens, loginRequest, logoutRequest, refreshSession, saveTokens, type Dashboard, type PublicUser, type Resource, type Role } from './src/services/api';
 import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvider';
 import type { FanixTheme } from './src/theme/fanixTheme';
 
@@ -88,6 +88,10 @@ function ERPApp() {
   const [loginHovered, setLoginHovered] = useState(false);
   const [createHovered, setCreateHovered] = useState(false);
   const [token, setToken] = useState('');
+  const [refreshToken, setRefreshToken] = useState('');
+  const [user, setUser] = useState<PublicUser | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
+  const [restoringSession, setRestoringSession] = useState(true);
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
   const [email, setEmail] = useState(defaultDemoEmail);
@@ -108,15 +112,12 @@ function ERPApp() {
     setBusy(true);
     setError('');
     try {
-      const response = await fetch(`${API}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo iniciar sesión');
+      const data = await loginRequest(email, password);
+      await saveTokens(data.token, data.refreshToken);
       setCompanyName(data.company?.name ?? '');
+      setUser(data.user);
       setToken(data.token);
+      setRefreshToken(data.refreshToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
     } finally {
@@ -136,11 +137,7 @@ function ERPApp() {
     }
 
     try {
-      const response = await fetch(`${API}/${path}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo cargar el módulo');
+      const data = await requestWithSession(path);
       setRows(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar');
@@ -164,17 +161,11 @@ function ERPApp() {
           : active === 'Productos'
             ? { sku: `SKU-${Date.now()}`, name: formValue, price: 0, cost: 0, stockMinimum: 1 }
             : active === 'Proyectos'
-              ? { name: formValue, ownerId: '00000000-0000-0000-0000-000000000000' }
+              ? { name: formValue, ownerId: user?.id }
               : { name: formValue };
 
     try {
-      const response = await fetch(`${API}/${path}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo crear el registro');
+      const data = await requestWithSession(path, { method: 'POST', body: JSON.stringify(payload) });
       setFormValue('');
       await loadModule(active);
     } catch (err) {
@@ -184,12 +175,69 @@ function ERPApp() {
     }
   }
 
+  async function establishSession(nextToken: string, nextRefreshToken: string) {
+    const me = await authenticatedRequest('me', nextToken);
+    setToken(nextToken);
+    setRefreshToken(nextRefreshToken);
+    setUser(me.user ?? null);
+    setRole(me.role ?? null);
+    setCompanyName(me.company?.name ?? '');
+  }
+
+  async function requestWithSession(path: string, init: RequestInit = {}) {
+    try {
+      return await authenticatedRequest(path, token, init);
+    } catch (err) {
+      const apiError = err as Error & { status?: number };
+      if (apiError.status !== 401 || !refreshToken) throw err;
+      const renewed = await refreshSession(refreshToken);
+      await saveTokens(renewed.token, renewed.refreshToken);
+      await establishSession(renewed.token, renewed.refreshToken);
+      return authenticatedRequest(path, renewed.token, init);
+    }
+  }
+
+  async function logout() {
+    try {
+      if (token) await logoutRequest(token);
+    } catch {
+      // Local cleanup must still happen if the API is unavailable.
+    } finally {
+      await clearTokens();
+      setToken('');
+      setRefreshToken('');
+      setUser(null);
+      setRole(null);
+      setCompanyName('');
+      setError('');
+      setRows([]);
+      setDashboard(null);
+      setActive('Dashboard');
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const stored = await loadTokens();
+        if (!stored.refreshToken) return;
+        const renewed = await refreshSession(stored.refreshToken);
+        if (!mounted) return;
+        await saveTokens(renewed.token, renewed.refreshToken);
+        await establishSession(renewed.token, renewed.refreshToken);
+      } catch {
+        await clearTokens();
+      } finally {
+        if (mounted) setRestoringSession(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/dashboard`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((response) => response.json())
+    requestWithSession('dashboard')
       .then((data) => setDashboard(data))
       .catch(() => setError('No se pudo cargar el dashboard'));
   }, [token]);
@@ -209,6 +257,10 @@ function ERPApp() {
 
   const inventoryAlerts = dashboard?.lowStock ?? [];
   const recentActivity = dashboard?.recentActivity ?? [];
+
+  if (restoringSession) {
+    return <SafeAreaView style={styles.loginPage}><LoadingState label="Restaurando sesión..." /></SafeAreaView>;
+  }
 
   if (!token) {
     return (
@@ -299,7 +351,8 @@ function ERPApp() {
       navItems={moduleItems}
       activeItem={active}
       onSelect={loadModule}
-      onLogout={() => { setToken(''); setError(''); setRows([]); setDashboard(null); }}
+      userLabel={user?.name ? `${user.name}${role ? ` · ${role}` : ''}` : (role ?? 'Usuario')}
+      onLogout={logout}
     >
       {error ? <Card style={styles.notice}><Text accessibilityRole="alert" style={styles.noticeText}>{error}</Text></Card> : null}
 
@@ -351,7 +404,7 @@ function ERPApp() {
         <Card style={styles.cardSection}>
           <View style={[styles.moduleHeader, compact && styles.moduleHeaderCompact]}>
             <Text style={styles.sectionTitle}>{active}</Text>
-            <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
+            {active !== 'Notificaciones' ? <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
               <TextInput
                 value={formValue}
                 onChangeText={setFormValue}
@@ -375,7 +428,7 @@ function ERPApp() {
               >
                 <Text style={[styles.secondaryButtonText, (busy || !formValue.trim()) && styles.secondaryButtonTextDisabled]}>{busy ? 'Guardando...' : 'Crear'}</Text>
               </Pressable>
-            </View>
+            </View> : null}
           </View>
 
           {loadingModule ? <LoadingState label="Cargando módulo..." /> : null}
