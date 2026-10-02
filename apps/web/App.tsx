@@ -105,6 +105,7 @@ function ERPApp() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [role, setRole] = useState('viewer');
 
   const tableColumns = useMemo(() => tableColumnsByModule[active] ?? tableColumnsByModule.Productos, [active]);
 
@@ -121,6 +122,10 @@ function ERPApp() {
       if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo iniciar sesión');
       setCompanyName(data.company?.name ?? '');
       setToken(data.token);
+      fetch(`${API}/me`, { headers: { Authorization: `Bearer ${data.token}` } })
+        .then((response) => response.json())
+        .then((profile) => setRole(profile.role ?? 'viewer'))
+        .catch(() => setRole('viewer'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
     } finally {
@@ -276,6 +281,9 @@ function ERPApp() {
     { label: 'Notificaciones', value: dashboard?.counts.unreadNotifications ?? 0, delta: undefined },
   ];
 
+  const canManage = ['owner', 'admin'].includes(role);
+  const canCreate = canManage || (role === 'sales' && ['Clientes', 'Proyectos', 'Incidencias'].includes(active)) || (role === 'inventory' && active === 'Productos') || active === 'Incidencias';
+
   const inventoryAlerts = dashboard?.lowStock ?? [];
   const recentActivity = dashboard?.recentActivity ?? [];
 
@@ -368,7 +376,7 @@ function ERPApp() {
       navItems={moduleItems}
       activeItem={active}
       onSelect={loadModule}
-      onLogout={() => { setToken(''); setError(''); setRows([]); setDashboard(null); }}
+      onLogout={() => { setToken(''); setRole('viewer'); setError(''); setSuccess(''); setRows([]); setDashboard(null); }}
     >
       {error ? <Card style={styles.notice}><Text accessibilityRole="alert" style={styles.noticeText}>{error}</Text></Card> : null}
       {success ? <Card style={styles.successNotice}><Text accessibilityRole="alert" style={styles.successText}>{success}</Text></Card> : null}
@@ -445,7 +453,7 @@ function ERPApp() {
             <TextInput value={search} onChangeText={setSearch} placeholder="Buscar registros..." accessibilityLabel="Buscar registros" placeholderTextColor={theme.colors.inputPlaceholder} style={styles.searchInput} />
           </View>
 
-          {formFields[active] ? (
+          {formFields[active] && canCreate ? (
             <View style={styles.formPanel}>
               <Text style={styles.formTitle}>{editingId ? 'Editar registro' : 'Nuevo registro'}</Text>
               <View style={styles.formGrid}>
@@ -470,7 +478,7 @@ function ERPApp() {
               </View>
             </View>
           ) : (
-            <Text style={styles.moduleSubtitle}>Este módulo utiliza un flujo especializado y no admite creación genérica desde esta pantalla.</Text>
+            <Text style={styles.moduleSubtitle}>{formFields[active] ? 'Tu rol actual tiene acceso de consulta, pero no permite crear registros en este módulo.' : 'Este módulo utiliza un flujo especializado y no admite creación genérica desde esta pantalla.'}</Text>
           )}
 
           {loadingModule ? <LoadingState label="Cargando módulo..." /> : null}
@@ -479,7 +487,7 @@ function ERPApp() {
             <EmptyState title="Sin registros" description={`No hay información disponible en ${active.toLowerCase()} en este momento.`} />
           ) : null}
 
-          {!loadingModule && visibleRows.length > 0 ? <DataTable rows={visibleRows as Record<string, unknown>[]} columns={tableColumns} onEdit={['Clientes','Productos','Proveedores','Empleados'].includes(active) ? startEdit : undefined} onDelete={['Clientes','Productos','Proveedores'].includes(active) ? deleteRecord : undefined} /> : null}
+          {!loadingModule && visibleRows.length > 0 ? <DataTable rows={visibleRows as Record<string, unknown>[]} columns={tableColumns} onEdit={canCreate && ['Clientes','Productos','Proveedores','Empleados'].includes(active) ? startEdit : undefined} onDelete={canManage && ['Clientes','Productos','Proveedores'].includes(active) ? deleteRecord : undefined} /> : null}
         </Card>
       )}
     </AppShell>
