@@ -1,5 +1,7 @@
 # DEPLOYMENT CHECKLIST
 
+> La fase “sin despliegue” al final de este documento es histórica. Web está publicada en `https://erp-fanixglobal.pages.dev/`; API en `https://erp-fanix-global.onrender.com/api/v1`. La auditoría actual se encuentra en `AUDITORIA_QA_2026-10-02.md`. En Cloudflare, exportar `apps/web` y usar `apps/web/dist` como salida; mantener el prefijo `/api/v1` en `EXPO_PUBLIC_API_URL` y permitir el origen web exacto en Render.
+
 Esta lista es solo de preparación para despliegue académico y no incluye valores reales ni secretos.
 
 ## BACKEND / RENDER

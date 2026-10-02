@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const API = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const configuredApi = process.env.EXPO_PUBLIC_API_URL?.trim();
+export const API = (configuredApi || (__DEV__ ? 'http://localhost:4000/api/v1' : 'https://erp-fanix-global.onrender.com/api/v1')).replace(/\/+$/, '');
 
 const ACCESS_TOKEN_KEY = '@fanix/access-token';
 const REFRESH_TOKEN_KEY = '@fanix/refresh-token';

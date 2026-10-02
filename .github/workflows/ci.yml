@@ -1,26 +1,25 @@
 name: Fanix Global CI
-
 on:
-  pull_request:
   push:
     branches: [main]
-
+  pull_request:
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Tests
-        run: npm test
-      - name: Build
-        run: npm run build
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm exec --workspace apps/web -- expo install --check
+      - run: npm exec --workspace apps/mobile -- expo install --check
+      - run: npm run export --workspace apps/web
+        env:
+          EXPO_PUBLIC_API_URL: https://erp-fanix-global.onrender.com/api/v1
+      - run: npm exec --workspace apps/mobile -- expo export --platform android --output-dir dist-android
+        env:
+          EXPO_PUBLIC_API_URL: https://erp-fanix-global.onrender.com/api/v1

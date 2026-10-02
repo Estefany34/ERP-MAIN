@@ -19,6 +19,7 @@ export function AppShell({
   onSelect,
   onLogout,
   userLabel,
+  logoutDisabled,
   children,
 }: {
   title: string;
@@ -28,6 +29,7 @@ export function AppShell({
   onSelect: (value: string) => void;
   onLogout: () => void;
   userLabel?: string;
+  logoutDisabled?: boolean;
   children: React.ReactNode;
 }) {
   const { width } = useWindowDimensions();
@@ -45,7 +47,7 @@ export function AppShell({
           <View style={[styles.brandWrap, compact && styles.brandWrapCompact]}>
             <FanixLogo compact variant="inverse" />
             {compact ? (
-              <Pressable onPress={onLogout} onHoverIn={() => setLogoutHovered(true)} onHoverOut={() => setLogoutHovered(false)} accessibilityRole="button" style={[styles.compactLogout, logoutHovered && { backgroundColor: theme.colors.sidebarSurface }]}>
+              <Pressable disabled={logoutDisabled} onPress={onLogout} onHoverIn={() => setLogoutHovered(true)} onHoverOut={() => setLogoutHovered(false)} accessibilityRole="button" style={[styles.compactLogout, logoutHovered && { backgroundColor: theme.colors.sidebarSurface }]}>
                 <Text style={[styles.signOutText, { color: theme.colors.sidebarText }]}>Cerrar sesión</Text>
               </Pressable>
             ) : null}
@@ -59,15 +61,15 @@ export function AppShell({
             contentContainerStyle={compact ? styles.navRail : styles.navList}
           >
             {navItems.map((item, index) => {
-              const previousGroup = index > 0 ? navItems[index - 1]?.group : undefined;
-              const showGroup = !compact && item.group && item.group !== previousGroup;
+              const showGroup = !compact && item.group && item.group !== navItems[index - 1]?.group;
               const selected = activeItem === item.value;
               const hovered = hoveredItem === item.value;
               return (
                 <React.Fragment key={item.value}>
-                  {showGroup ? <Text style={[styles.navGroupLabel, { color: theme.colors.sidebarTextMuted }]}>{item.group}</Text> : null}
+                {showGroup ? <Text style={{ color: theme.colors.sidebarTextMuted, fontSize: 11, fontWeight: '700', marginTop: 14, marginBottom: 4 }}>{item.group}</Text> : null}
                 <Pressable
                   key={item.value}
+                  disabled={item.enabled === false}
                   onPress={() => item.enabled !== false && onSelect(item.value)}
                   onHoverIn={() => setHoveredItem(item.value)}
                   onHoverOut={() => setHoveredItem(null)}
@@ -89,7 +91,7 @@ export function AppShell({
           </ScrollView>
 
           {!compact ? (
-            <Pressable onPress={onLogout} onHoverIn={() => setLogoutHovered(true)} onHoverOut={() => setLogoutHovered(false)} accessibilityRole="button" style={[styles.signOut, { borderColor: theme.colors.sidebarBorder, backgroundColor: logoutHovered ? theme.colors.sidebarSurface : 'transparent' }]}>
+            <Pressable disabled={logoutDisabled} onPress={onLogout} onHoverIn={() => setLogoutHovered(true)} onHoverOut={() => setLogoutHovered(false)} accessibilityRole="button" style={[styles.signOut, { borderColor: theme.colors.sidebarBorder, backgroundColor: logoutHovered ? theme.colors.sidebarSurface : 'transparent' }]}>
               <Text style={[styles.signOutText, { color: theme.colors.sidebarText }]}>Cerrar sesión</Text>
             </Pressable>
           ) : null}
@@ -103,7 +105,7 @@ export function AppShell({
             </View>
             <View style={[styles.topbarActions, compact && styles.topbarActionsCompact]}>
               <View style={[styles.companyBadge, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}><Text style={[styles.companyText, { color: theme.colors.textSecondary }]} numberOfLines={1}>{companyName}</Text></View>
-              <View style={[styles.userBadge, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}><Text style={[styles.userText, { color: theme.colors.textSecondary }]}>{userLabel || 'Usuario'}</Text></View>
+              <View style={[styles.userBadge, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}><Text style={[styles.userText, { color: theme.colors.textSecondary }]}>{userLabel ?? 'Usuario'}</Text></View>
               <View accessibilityRole="radiogroup" accessibilityLabel="Apariencia" style={[styles.themeSelector, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}>
                 {themeModes.map((option) => {
                   const selected = mode === option.value;
@@ -143,7 +145,7 @@ export function AppShell({
                 />
               </View>
             ) : null}
-            <ScrollView contentContainerStyle={[styles.content, compact && styles.contentCompact]}>{children}</ScrollView>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, compact && styles.contentCompact]}>{children}</ScrollView>
           </View>
         </View>
       </View>
@@ -170,16 +172,15 @@ const styles = StyleSheet.create({
   },
   sidebarCompact: { width: '100%', paddingHorizontal: 14, paddingVertical: 10, borderRightWidth: 0, borderBottomWidth: 1 },
   brandWrap: { alignItems: 'center', paddingHorizontal: 2, marginBottom: 22 },
-  brandWrapCompact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  compactLogout: { position: 'absolute', right: 0, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  brandWrapCompact: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  compactLogout: { minHeight: 44, justifyContent: 'center', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
   sectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8 },
   navScroll: { flex: 1 },
   navScrollCompact: { flexGrow: 0, minHeight: 42 },
   navList: { flexGrow: 1, gap: 3 },
-  navGroupLabel: { fontSize: 10, lineHeight: 14, fontWeight: '700', textTransform: 'uppercase', marginTop: 14, marginBottom: 4, paddingHorizontal: 10, letterSpacing: 0.5 },
   navRail: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 12 },
   navItem: { flexDirection: 'row', alignItems: 'center', minHeight: 40, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: 'transparent', borderLeftWidth: 3 },
-  navItemCompact: { minHeight: 36, paddingVertical: 7, paddingHorizontal: 9 },
+  navItemCompact: { minHeight: 44, paddingVertical: 7, paddingHorizontal: 9 },
   navItemDisabled: { opacity: 0.45 },
   navText: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
   navTextDisabled: { opacity: 0.75 },

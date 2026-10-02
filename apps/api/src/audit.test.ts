@@ -1,0 +1,74 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createApp } from './app.js';
+import { db, id, now, seedOwner } from './store.js';
+import { issueToken } from './auth.js';
+
+test('QA: forms, editing, permissions, references and stock invariants', async () => {
+  await seedOwner();
+  const owner = db.users[0]!;
+  const company = db.companies[0]!;
+  const token = issueToken(owner.id, company.id, 'owner');
+  const server = createApp().listen(0);
+  await new Promise<void>(resolve => server.once('listening', () => resolve()));
+  const base = `http://localhost:${(server.address() as { port: number }).port}/api/v1`;
+  async function call(path: string, method = 'GET', body?: unknown, auth = token, key?: string) {
+    const response = await fetch(`${base}/${path}`, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    return { status: response.status, body: await response.json() as any };
+  }
+  try {
+    const customer = await call('customers', 'POST', { name: 'Cliente QA', email: 'qa@example.com' });
+    assert.equal(customer.status, 201);
+    const edited = await call(`customers/${customer.body.id}`, 'PATCH', { name: 'Cliente actualizado' });
+    assert.equal(edited.status, 200); assert.equal(edited.body.name, 'Cliente actualizado');
+    const product = await call('products', 'POST', { name: 'Producto QA', sku: 'QA-1', price: 20, cost: 10, stockMinimum: 1 });
+    assert.equal(product.status, 201);
+    assert.equal((await call('products', 'POST', { name: 'Duplicado', sku: 'qa-1', price: 20, cost: 10 })).status, 409);
+    assert.equal((await call(`products/${product.body.id}`, 'PATCH', { price: 25 })).body.price, 25);
+    const movementKey = id();
+    await call('inventory/movements', 'POST', { productId: product.body.id, type: 'in', quantity: 5 }, token, movementKey);
+    assert.equal((await call('inventory/movements', 'POST', { productId: product.body.id, type: 'in', quantity: 5 }, token, movementKey)).status, 200);
+    const duplicateSale = await call('sales', 'POST', { customerId: customer.body.id, items: [{ productId: product.body.id, quantity: 4 }, { productId: product.body.id, quantity: 4 }] }, token, id());
+    assert.equal(duplicateSale.status, 400);
+    assert.equal((await call('products')).body[0].stock, 5);
+    const badSale = await call('sales', 'POST', { customerId: customer.body.id, items: [{ productId: id(), quantity: 1 }] }, token, id());
+    assert.equal(badSale.status, 404);
+    const saleKey = id();
+    const sale = await call('sales', 'POST', { customerId: customer.body.id, items: [{ productId: product.body.id, quantity: 2 }] }, token, saleKey);
+    assert.equal(sale.status, 201); assert.equal(sale.body.total, 50);
+    assert.equal((await call('sales', 'POST', { customerId: customer.body.id, items: [{ productId: product.body.id, quantity: 2 }] }, token, saleKey)).status, 200);
+    assert.equal((await call('products')).body[0].stock, 3);
+    assert.equal((await call('sales')).body.length, 1);
+    assert.equal((await call(`customers/${customer.body.id}`, 'DELETE')).status, 409);
+    assert.equal((await call('inventory/movements')).body.length, 2);
+    const members = await call('company/members');
+    assert.equal(members.status, 200); assert.equal(members.body[0].id, owner.id); assert.equal(members.body[0].passwordHash, undefined);
+    const project = await call('projects', 'POST', { name: 'Proyecto QA', ownerId: owner.id, customerId: customer.body.id });
+    assert.equal(project.status, 201);
+    assert.equal((await call('projects', 'POST', { name: 'Proyecto inválido', ownerId: owner.id, customerId: id() })).status, 404);
+    assert.equal((await call(`projects/${project.body.id}/status`, 'PATCH', { status: 'active' })).body.status, 'active');
+    const supplier = await call('suppliers', 'POST', { name: 'Proveedor QA' });
+    assert.equal((await call(`suppliers/${supplier.body.id}`, 'PATCH', { phone: '2460000000' })).body.phone, '2460000000');
+    const purchase = await call('purchases', 'POST', { supplierId: supplier.body.id, items: [{ productId: product.body.id, quantity: 2 }] }, token, id());
+    assert.equal(purchase.status, 201);
+    assert.equal((await call(`purchases/${purchase.body.id}/receive`, 'POST')).status, 409);
+    assert.equal((await call(`purchases/${purchase.body.id}/approve`, 'POST')).status, 200);
+    assert.equal((await call(`purchases/${purchase.body.id}/receive`, 'POST')).status, 200);
+    assert.equal((await call(`purchases/${purchase.body.id}/receive`, 'POST')).status, 409);
+    assert.equal((await call('products')).body[0].stock, 5);
+    const expense = await call('finance/transactions', 'POST', { type: 'expense', category: 'Servicios', amount: 123.45 });
+    assert.equal(expense.status, 201); assert.equal(expense.body.amount, 123.45);
+    assert.equal((await call('payments', 'POST', { type: 'income', referenceId: expense.body.id, amount: 1, method: 'cash' }, token, id())).status, 404);
+    assert.equal((await call('production/boms', 'POST', { productId: product.body.id, components: [{ productId: product.body.id, quantity: 1 }] })).status, 400);
+    const viewerId = id(); db.users.push({ id: viewerId, email: 'viewer@qa.local', name: 'Consulta QA', passwordHash: '', createdAt: now() }); db.memberships.push({ userId: viewerId, companyId: company.id, role: 'viewer' });
+    const viewer = issueToken(viewerId, company.id, 'viewer');
+    assert.equal((await call('products', 'POST', { name: 'No permitido', sku: 'QA-V', price: 0, cost: 0 }, viewer)).status, 403);
+    assert.equal((await call(`customers/${customer.body.id}`, 'PATCH', { name: 'No permitido' }, viewer)).status, 403);
+    assert.equal((await call('sales', 'GET', undefined, viewer)).status, 403);
+    const otherCompanyId = id(); const otherUserId = id(); db.memberships.push({ userId: otherUserId, companyId: otherCompanyId, role: 'owner' });
+    const other = issueToken(otherUserId, otherCompanyId, 'owner');
+    assert.equal((await call(`products/${product.body.id}`, 'PATCH', { price: 0 }, other)).status, 404);
+    assert.equal((await call('company/members', 'GET', undefined, other)).body.length, 0);
+    assert.equal((await call('auth/register', 'POST', { email: 123, password: ['invalid'], name: 'Name', companyName: 'Company' })).status, 400);
+  } finally { server.close(); }
+});

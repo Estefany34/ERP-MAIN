@@ -5,4 +5,4 @@
 - Compras, RRHH, proyectos, finanzas básicas, producción básica, documentos con metadatos, notificaciones, incidencias y reportes CSV siguen siendo funcionales en la base actual, pero no sustituyen una arquitectura de producción completa.
 - El cliente móvil reutiliza la interfaz base; la navegación nativa específica y permisos de dispositivo no se han extendido en esta fase.
 - El usuario demo debe permanecer solo en desarrollo; en producción no se usa ni se muestra por defecto.
-- La interfaz web ya incorpora el branding Fanix Global y el logo oficial, pero no se ha realizado despliegue ni publicación pública de ningún entorno.
+- Web y API están publicadas. La interfaz comparte componentes con Android; las mejoras de navegación, formularios y tarjetas móviles deben validarse además en un APK instalado. Consulte `AUDITORIA_QA_2026-10-02.md` para los pendientes actuales.

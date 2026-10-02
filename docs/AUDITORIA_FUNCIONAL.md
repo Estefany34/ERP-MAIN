@@ -1,5 +1,7 @@
 # Auditoria funcional
 
+> Documento histórico. La revisión actualizada, sus correcciones y las pruebas están en [AUDITORIA_QA_2026-10-02.md](AUDITORIA_QA_2026-10-02.md).
+
 Fecha: 2026-09-23. Revisada la implementacion real de `apps/api/src`, `apps/web/App.tsx`, `apps/mobile/App.tsx`, configuracion y pruebas.
 
 | Modulo | Funcionalidades solicitadas | Estado actual | Defectos encontrados | Acciones necesarias |

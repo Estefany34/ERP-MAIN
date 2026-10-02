@@ -20,7 +20,7 @@ export type Session = {
 };
 export type Customer = { id: string; companyId: string; name: string; email?: string; phone?: string; classification?: string; createdAt: string };
 export type Product = { id: string; companyId: string; sku: string; name: string; price: number; cost: number; stockMinimum: number; createdAt: string };
-export type InventoryMovement = { id: string; companyId: string; productId: string; type: 'in' | 'out' | 'adjustment'; quantity: number; reference?: string; createdAt: string };
+export type InventoryMovement = { id: string; companyId: string; productId: string; type: 'in' | 'out' | 'adjustment'; quantity: number; reference?: string; idempotencyKey?: string; createdAt: string };
 export type Sale = { id: string; companyId: string; customerId: string; items: { productId: string; quantity: number; unitPrice: number }[]; total: number; status: 'confirmed'; idempotencyKey: string; createdAt: string };
 export type Quote = { id: string; companyId: string; customerId: string; items: { productId: string; quantity: number; unitPrice: number }[]; subtotal: number; tax: number; total: number; status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'; createdAt: string };
 export type Payment = { id: string; companyId: string; type: 'sale' | 'purchase' | 'income' | 'expense'; referenceId: string; amount: number; method: 'cash' | 'bank_transfer' | 'card' | 'external'; status: 'pending' | 'completed' | 'failed'; idempotencyKey: string; createdAt: string };

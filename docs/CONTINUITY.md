@@ -1,5 +1,9 @@
 # CONTINUITY REPORT
 
+## Actualización 2026-10-02: auditoría QA
+
+La fase previa descrita abajo es histórica. Web y API ya están publicadas. La nueva auditoría, matriz funcional y lista priorizada de pendientes están en [AUDITORIA_QA_2026-10-02.md](AUDITORIA_QA_2026-10-02.md). Se corrigieron formularios, edición y acciones de estado; se añadieron módulos accesibles, navegación web con hash, renovación/revocación y restauración de sesión persistente, adaptación de listados al celular y pruebas de componentes con API local. Las versiones de React/RN se alinearon con Expo. El APK físico y la persistencia transaccional de Atlas siguen pendientes.
+
 ## Phase current
 FASE CIERRE PRE-DEPLOYMENT: seguridad, privacidad, preparación para despliegue académico y validación final sin publicar.
 
