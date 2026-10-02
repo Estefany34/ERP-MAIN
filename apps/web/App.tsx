@@ -14,15 +14,15 @@ import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvide
 import type { FanixTheme } from './src/theme/fanixTheme';
 
 const moduleItems = [
-  { label: 'Dashboard', value: 'Dashboard' },
-  { label: 'Clientes', value: 'Clientes' },
-  { label: 'Productos', value: 'Productos' },
-  { label: 'Proveedores', value: 'Proveedores' },
-  { label: 'Empleados', value: 'Empleados' },
-  { label: 'Proyectos', value: 'Proyectos' },
-  { label: 'Finanzas', value: 'Finanzas' },
-  { label: 'Incidencias', value: 'Incidencias' },
-  { label: 'Notificaciones', value: 'Notificaciones' },
+  { label: 'Inicio', value: 'Dashboard', group: 'General' },
+  { label: 'Productos', value: 'Productos', group: 'Operaciones' },
+  { label: 'Proyectos', value: 'Proyectos', group: 'Operaciones' },
+  { label: 'Clientes', value: 'Clientes', group: 'Contactos' },
+  { label: 'Proveedores', value: 'Proveedores', group: 'Contactos' },
+  { label: 'Finanzas', value: 'Finanzas', group: 'Administración' },
+  { label: 'Empleados', value: 'Empleados', group: 'Administración' },
+  { label: 'Incidencias', value: 'Incidencias', group: 'Sistema' },
+  { label: 'Notificaciones', value: 'Notificaciones', group: 'Sistema' },
 ];
 
 const tableColumnsByModule: Record<string, { key: string; label: string }[]> = {
@@ -305,6 +305,24 @@ function ERPApp() {
 
       {active === 'Dashboard' ? (
         <>
+          <View style={styles.dashboardIntro}>
+            <View style={styles.dashboardIntroText}>
+              <Text style={styles.dashboardTitle}>Resumen general</Text>
+              <Text style={styles.dashboardSubtitle}>Consulta el estado de la operación y accede rápidamente a las tareas más frecuentes.</Text>
+            </View>
+            <View style={styles.quickActions}>
+              {[
+                { label: '+ Producto', module: 'Productos' },
+                { label: '+ Cliente', module: 'Clientes' },
+                { label: 'Ver finanzas', module: 'Finanzas' },
+              ].map((action) => (
+                <Pressable key={action.module} onPress={() => loadModule(action.module)} accessibilityRole="button" style={({ pressed }) => [styles.quickActionButton, pressed && styles.buttonPressed]}>
+                  <Text style={styles.quickActionText}>{action.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
           <View style={styles.statsRow}>
             {stats.map((stat) => (
               <StatCard key={stat.label} label={stat.label} value={stat.value} delta={stat.delta ?? undefined} />
@@ -473,6 +491,13 @@ function createStyles(theme: FanixTheme) {
   hintText: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
   notice: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder, borderWidth: 1, padding: 13 },
   noticeText: { color: theme.colors.danger, fontWeight: '600', lineHeight: 20 },
+  dashboardIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' },
+  dashboardIntroText: { flex: 1, minWidth: 240 },
+  dashboardTitle: { color: theme.colors.textPrimary, fontSize: 22, lineHeight: 29, fontWeight: '700' },
+  dashboardSubtitle: { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 4, maxWidth: 620 },
+  quickActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  quickActionButton: { minHeight: 38, justifyContent: 'center', paddingHorizontal: 13, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.infoBorder, backgroundColor: theme.colors.accentSoft },
+  quickActionText: { color: theme.colors.accent, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   twoColumn: { flexDirection: 'row', gap: 18 },
   twoColumnCompact: { flexDirection: 'column' },
