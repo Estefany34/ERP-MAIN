@@ -100,6 +100,10 @@ function ERPApp() {
   const [busy, setBusy] = useState(false);
   const [loadingModule, setLoadingModule] = useState(false);
   const [formValue, setFormValue] = useState('');
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [success, setSuccess] = useState('');
   const [companyName, setCompanyName] = useState('');
 
   const tableColumns = useMemo(() => tableColumnsByModule[active] ?? tableColumnsByModule.Productos, [active]);
@@ -148,6 +152,71 @@ function ERPApp() {
     } finally {
       setLoadingModule(false);
     }
+  }
+
+  const formFields: Record<string, Array<{ key: string; label: string; type?: 'number' | 'email' }>> = {
+    Clientes: [{ key: 'name', label: 'Nombre' }, { key: 'email', label: 'Correo', type: 'email' }, { key: 'phone', label: 'Teléfono' }, { key: 'classification', label: 'Clasificación' }],
+    Productos: [{ key: 'name', label: 'Nombre' }, { key: 'sku', label: 'SKU' }, { key: 'price', label: 'Precio', type: 'number' }, { key: 'cost', label: 'Costo', type: 'number' }, { key: 'stockMinimum', label: 'Stock mínimo', type: 'number' }],
+    Proveedores: [{ key: 'name', label: 'Nombre' }, { key: 'email', label: 'Correo', type: 'email' }, { key: 'phone', label: 'Teléfono' }],
+    Empleados: [{ key: 'name', label: 'Nombre' }, { key: 'email', label: 'Correo', type: 'email' }, { key: 'department', label: 'Departamento' }, { key: 'position', label: 'Puesto' }],
+    Finanzas: [{ key: 'category', label: 'Categoría' }, { key: 'amount', label: 'Monto', type: 'number' }, { key: 'reference', label: 'Referencia' }],
+    Incidencias: [{ key: 'title', label: 'Título' }, { key: 'description', label: 'Descripción' }],
+  };
+
+  const visibleRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(term)));
+  }, [rows, search]);
+
+  function buildPayload() {
+    const value = (key: string) => form[key]?.trim() ?? '';
+    if (active === 'Productos') return { name: value('name'), sku: value('sku'), price: Number(value('price')), cost: Number(value('cost')), stockMinimum: Number(value('stockMinimum') || 0) };
+    if (active === 'Clientes') return { name: value('name'), ...(value('email') ? { email: value('email') } : {}), ...(value('phone') ? { phone: value('phone') } : {}), ...(value('classification') ? { classification: value('classification') } : {}) };
+    if (active === 'Proveedores') return { name: value('name'), ...(value('email') ? { email: value('email') } : {}), ...(value('phone') ? { phone: value('phone') } : {}) };
+    if (active === 'Empleados') return { name: value('name'), ...(value('email') ? { email: value('email') } : {}), ...(value('department') ? { department: value('department') } : {}), ...(value('position') ? { position: value('position') } : {}), status: 'active' };
+    if (active === 'Finanzas') return { type: 'income', category: value('category'), amount: Number(value('amount')), status: 'pending', ...(value('reference') ? { reference: value('reference') } : {}) };
+    if (active === 'Incidencias') return { title: value('title'), ...(value('description') ? { description: value('description') } : {}) };
+    return null;
+  }
+
+  function startEdit(row: Record<string, unknown>) {
+    if (!row.id) return;
+    setEditingId(String(row.id));
+    const next: Record<string, string> = {};
+    (formFields[active] ?? []).forEach((field) => { next[field.key] = String(row[field.key] ?? ''); });
+    setForm(next);
+  }
+
+  async function saveRecord() {
+    const path = endpointMap[active];
+    const payload = buildPayload();
+    if (!path || !payload) return;
+    const required = active === 'Productos' ? ['name', 'sku', 'price', 'cost'] : active === 'Finanzas' ? ['category', 'amount'] : [active === 'Incidencias' ? 'title' : 'name'];
+    if (required.some((key) => !form[key]?.trim())) { setError('Completa los campos obligatorios.'); return; }
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch(`${API}/${path}${editingId ? `/${editingId}` : ''}`, {
+        method: editingId ? 'PATCH' : 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = response.status === 204 ? null : await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo guardar el registro');
+      setForm({}); setEditingId(null); setSuccess(editingId ? 'Registro actualizado correctamente.' : 'Registro creado correctamente.');
+      await loadModule(active);
+    } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo guardar el registro'); } finally { setBusy(false); }
+  }
+
+  async function deleteRecord(row: Record<string, unknown>) {
+    const path = endpointMap[active]; if (!path || !row.id) return;
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch(`${API}/${path}/${row.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      const data = response.status === 204 ? null : await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo eliminar el registro');
+      setSuccess('Registro eliminado correctamente.'); await loadModule(active);
+    } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo eliminar el registro'); } finally { setBusy(false); }
   }
 
   async function createRecord() {
@@ -302,6 +371,7 @@ function ERPApp() {
       onLogout={() => { setToken(''); setError(''); setRows([]); setDashboard(null); }}
     >
       {error ? <Card style={styles.notice}><Text accessibilityRole="alert" style={styles.noticeText}>{error}</Text></Card> : null}
+      {success ? <Card style={styles.successNotice}><Text accessibilityRole="alert" style={styles.successText}>{success}</Text></Card> : null}
 
       {active === 'Dashboard' ? (
         <>
@@ -368,41 +438,48 @@ function ERPApp() {
       ) : (
         <Card style={styles.cardSection}>
           <View style={[styles.moduleHeader, compact && styles.moduleHeaderCompact]}>
-            <Text style={styles.sectionTitle}>{active}</Text>
-            <View style={[styles.inlineCreate, compact && styles.inlineCreateCompact]}>
-              <TextInput
-                value={formValue}
-                onChangeText={setFormValue}
-                placeholder={`Nuevo ${active.toLowerCase()}`}
-                accessibilityLabel={`Nuevo ${active.toLowerCase()}`}
-                onFocus={() => setFocusedField('new-record')}
-                onBlur={() => setFocusedField('')}
-                placeholderTextColor={theme.colors.inputPlaceholder}
-                style={[styles.formInput, focusedField === 'new-record' && styles.inputFocused]}
-              />
-              <Pressable
-                onPress={createRecord}
-                onFocus={() => setFocusedField('create')}
-                onBlur={() => setFocusedField('')}
-                onHoverIn={() => setCreateHovered(true)}
-                onHoverOut={() => setCreateHovered(false)}
-                disabled={busy || !formValue.trim()}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy || !formValue.trim() }}
-                style={({ pressed }) => [styles.secondaryButton, createHovered && styles.secondaryButtonHovered, focusedField === 'create' && styles.buttonFocused, pressed && styles.buttonPressed, (busy || !formValue.trim()) && styles.primaryButtonDisabled]}
-              >
-                <Text style={[styles.secondaryButtonText, (busy || !formValue.trim()) && styles.secondaryButtonTextDisabled]}>{busy ? 'Guardando...' : 'Crear'}</Text>
-              </Pressable>
+            <View>
+              <Text style={styles.sectionTitle}>{active}</Text>
+              <Text style={styles.moduleSubtitle}>Gestiona, consulta y actualiza la información de este módulo.</Text>
             </View>
+            <TextInput value={search} onChangeText={setSearch} placeholder="Buscar registros..." accessibilityLabel="Buscar registros" placeholderTextColor={theme.colors.inputPlaceholder} style={styles.searchInput} />
           </View>
+
+          {formFields[active] ? (
+            <View style={styles.formPanel}>
+              <Text style={styles.formTitle}>{editingId ? 'Editar registro' : 'Nuevo registro'}</Text>
+              <View style={styles.formGrid}>
+                {formFields[active].map((field) => (
+                  <View key={field.key} style={styles.fieldWrap}>
+                    <Text style={styles.fieldLabel}>{field.label}{['name','sku','price','cost','category','amount','title'].includes(field.key) ? ' *' : ''}</Text>
+                    <TextInput
+                      value={form[field.key] ?? ''}
+                      onChangeText={(value) => setForm((current) => ({ ...current, [field.key]: value }))}
+                      keyboardType={field.type === 'number' ? 'numeric' : field.type === 'email' ? 'email-address' : 'default'}
+                      autoCapitalize={field.type === 'email' ? 'none' : 'sentences'}
+                      placeholder={field.label}
+                      placeholderTextColor={theme.colors.inputPlaceholder}
+                      style={styles.formInput}
+                    />
+                  </View>
+                ))}
+              </View>
+              <View style={styles.formActions}>
+                {editingId ? <Pressable onPress={() => { setEditingId(null); setForm({}); }} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Cancelar</Text></Pressable> : null}
+                <Pressable onPress={saveRecord} disabled={busy} style={[styles.secondaryButton, busy && styles.primaryButtonDisabled]}><Text style={styles.secondaryButtonText}>{busy ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear registro'}</Text></Pressable>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.moduleSubtitle}>Este módulo utiliza un flujo especializado y no admite creación genérica desde esta pantalla.</Text>
+          )}
 
           {loadingModule ? <LoadingState label="Cargando módulo..." /> : null}
 
-          {!loadingModule && (!rows || rows.length === 0) ? (
+          {!loadingModule && (!visibleRows || visibleRows.length === 0) ? (
             <EmptyState title="Sin registros" description={`No hay información disponible en ${active.toLowerCase()} en este momento.`} />
           ) : null}
 
-          {!loadingModule && rows.length > 0 ? <DataTable rows={rows as Record<string, string | number | null | undefined>[]} columns={tableColumns} /> : null}
+          {!loadingModule && visibleRows.length > 0 ? <DataTable rows={visibleRows as Record<string, unknown>[]} columns={tableColumns} onEdit={['Clientes','Productos','Proveedores','Empleados'].includes(active) ? startEdit : undefined} onDelete={['Clientes','Productos','Proveedores'].includes(active) ? deleteRecord : undefined} /> : null}
         </Card>
       )}
     </AppShell>
@@ -491,6 +568,8 @@ function createStyles(theme: FanixTheme) {
   hintText: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
   notice: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder, borderWidth: 1, padding: 13 },
   noticeText: { color: theme.colors.danger, fontWeight: '600', lineHeight: 20 },
+  successNotice: { backgroundColor: theme.colors.accentSoft, borderColor: theme.colors.infoBorder, borderWidth: 1, padding: 13 },
+  successText: { color: theme.colors.accent, fontWeight: '600', lineHeight: 20 },
   dashboardIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' },
   dashboardIntroText: { flex: 1, minWidth: 240 },
   dashboardTitle: { color: theme.colors.textPrimary, fontSize: 22, lineHeight: 29, fontWeight: '700' },
@@ -513,6 +592,16 @@ function createStyles(theme: FanixTheme) {
   activityMeta: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
   moduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' },
   moduleHeaderCompact: { alignItems: 'flex-start' },
+  moduleSubtitle: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: -8 },
+  searchInput: { minWidth: 220, minHeight: 42, backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 12, color: theme.colors.textPrimary },
+  formPanel: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: 16, marginBottom: 18 },
+  formTitle: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 12 },
+  formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  fieldWrap: { minWidth: 180, flexGrow: 1, flexBasis: 180 },
+  fieldLabel: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700', marginBottom: 5 },
+  formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  cancelButton: { minHeight: 42, paddingHorizontal: 14, justifyContent: 'center', borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.border },
+  cancelButtonText: { color: theme.colors.textSecondary, fontWeight: '700' },
   inlineCreate: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   inlineCreateCompact: { width: '100%' },
   formInput: {
