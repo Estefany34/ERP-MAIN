@@ -17,6 +17,7 @@ export function AppShell({
   activeItem,
   onSelect,
   onLogout,
+  userLabel,
   children,
 }: {
   title: string;
@@ -25,6 +26,7 @@ export function AppShell({
   activeItem: string;
   onSelect: (value: string) => void;
   onLogout: () => void;
+  userLabel?: string;
   children: React.ReactNode;
 }) {
   const { width } = useWindowDimensions();
@@ -95,7 +97,7 @@ export function AppShell({
             </View>
             <View style={[styles.topbarActions, compact && styles.topbarActionsCompact]}>
               <View style={[styles.companyBadge, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}><Text style={[styles.companyText, { color: theme.colors.textSecondary }]} numberOfLines={1}>{companyName}</Text></View>
-              <View style={[styles.userBadge, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}><Text style={[styles.userText, { color: theme.colors.textSecondary }]}>Admin</Text></View>
+              <View style={[styles.userBadge, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}><Text style={[styles.userText, { color: theme.colors.textSecondary }]}>{userLabel || 'Usuario'}</Text></View>
               <View accessibilityRole="radiogroup" accessibilityLabel="Apariencia" style={[styles.themeSelector, { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border }]}>
                 {themeModes.map((option) => {
                   const selected = mode === option.value;
