@@ -102,6 +102,7 @@ function ERPApp() {
   const [busy, setBusy] = useState(false);
   const [loadingModule, setLoadingModule] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
@@ -177,6 +178,38 @@ function ERPApp() {
     Incidencias: [{ key: 'title', label: 'Título' }, { key: 'description', label: 'Descripción' }],
   };
 
+  const fieldLimits: Record<string, number> = { name: 120, email: 254, phone: 20, classification: 40, sku: 40, price: 12, cost: 12, stockMinimum: 9, department: 80, position: 80, category: 80, amount: 12, reference: 120, title: 160, description: 2000 };
+
+  function sanitizeField(key: string, raw: string) {
+    const limit = fieldLimits[key] ?? 160;
+    let value = raw.slice(0, limit);
+    if (['price', 'cost', 'amount'].includes(key)) value = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+    else if (key === 'stockMinimum') value = value.replace(/\D/g, '');
+    else if (key === 'phone') value = value.replace(/[^0-9+ ()-]/g, '');
+    else if (key === 'sku') value = value.replace(/[^A-Za-z0-9._-]/g, '');
+    else if (['name', 'classification', 'department', 'position', 'category', 'reference', 'title'].includes(key)) value = value.replace(/[^\p{L}\p{M}0-9 .,'&()_\-/#]/gu, '');
+    return value;
+  }
+
+  function validateField(key: string, value: string) {
+    const clean = value.trim();
+    if (!clean) return '';
+    if (key === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return 'Ingresa un correo válido.';
+    if (key === 'phone' && !/^\+?[0-9 ()-]{7,20}$/.test(clean)) return 'Usa entre 7 y 20 caracteres de teléfono.';
+    if (key === 'sku' && !/^[A-Za-z0-9._-]+$/.test(clean)) return 'Solo letras, números, punto, guion y guion bajo.';
+    if (['price', 'cost'].includes(key) && (!/^\d+(\.\d{1,2})?$/.test(clean) || Number(clean) < 0)) return 'Ingresa un número positivo con máximo 2 decimales.';
+    if (key === 'amount' && (!/^\d+(\.\d{1,2})?$/.test(clean) || Number(clean) <= 0)) return 'El monto debe ser mayor que 0 y tener máximo 2 decimales.';
+    if (key === 'stockMinimum' && (!/^\d+$/.test(clean) || Number(clean) < 0)) return 'El stock debe ser un entero igual o mayor que 0.';
+    if (['name', 'title', 'category'].includes(key) && clean.length < 2) return 'Ingresa al menos 2 caracteres.';
+    return '';
+  }
+
+  function updateFormField(key: string, raw: string) {
+    const value = sanitizeField(key, raw);
+    setForm((current) => ({ ...current, [key]: value }));
+    setFieldErrors((current) => ({ ...current, [key]: validateField(key, value) }));
+  }
+
   const visibleRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return rows;
@@ -197,6 +230,7 @@ function ERPApp() {
   function startEdit(row: Record<string, unknown>) {
     if (!row.id) return;
     setEditingId(String(row.id));
+    setFieldErrors({});
     const next: Record<string, string> = {};
     (formFields[active] ?? []).forEach((field) => { next[field.key] = String(row[field.key] ?? ''); });
     setForm(next);
@@ -208,6 +242,8 @@ function ERPApp() {
     if (!path || !payload) return;
     const required = active === 'Productos' ? ['name', 'sku', 'price', 'cost'] : active === 'Finanzas' ? ['category', 'amount'] : [active === 'Incidencias' ? 'title' : 'name'];
     if (required.some((key) => !form[key]?.trim())) { setError('Completa los campos obligatorios.'); return; }
+    const errors = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, validateField(key, value)]).filter(([, message]) => message));
+    if (Object.keys(errors).length) { setFieldErrors(errors); setError('Corrige los campos marcados antes de guardar.'); return; }
     setBusy(true); setError(''); setSuccess('');
     try {
       const response = await fetch(`${API}/${path}${editingId ? `/${editingId}` : ''}`, {
@@ -217,7 +253,7 @@ function ERPApp() {
       });
       const data = response.status === 204 ? null : await response.json();
       if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo guardar el registro');
-      setForm({}); setEditingId(null); setSuccess(editingId ? 'Registro actualizado correctamente.' : 'Registro creado correctamente.');
+      setForm({}); setFieldErrors({}); setEditingId(null); setSuccess(editingId ? 'Registro actualizado correctamente.' : 'Registro creado correctamente.');
       await loadModule(active);
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo guardar el registro'); } finally { setBusy(false); }
   }
@@ -480,18 +516,21 @@ function ERPApp() {
                     <Text style={styles.fieldLabel}>{field.label}{['name','sku','price','cost','category','amount','title'].includes(field.key) ? ' *' : ''}</Text>
                     <TextInput
                       value={form[field.key] ?? ''}
-                      onChangeText={(value) => setForm((current) => ({ ...current, [field.key]: value }))}
+                      onChangeText={(value) => updateFormField(field.key, value)}
+                      onBlur={() => setFieldErrors((current) => ({ ...current, [field.key]: validateField(field.key, form[field.key] ?? '') }))}
+                      maxLength={fieldLimits[field.key] ?? 160}
                       keyboardType={field.type === 'number' ? 'numeric' : field.type === 'email' ? 'email-address' : 'default'}
                       autoCapitalize={field.type === 'email' ? 'none' : 'sentences'}
                       placeholder={field.label}
                       placeholderTextColor={theme.colors.inputPlaceholder}
-                      style={styles.formInput}
+                      style={[styles.formInput, fieldErrors[field.key] ? styles.formInputError : null]}
                     />
+                    {fieldErrors[field.key] ? <Text accessibilityRole="alert" style={styles.fieldError}>{fieldErrors[field.key]}</Text> : null}
                   </View>
                 ))}
               </View>
               <View style={styles.formActions}>
-                {editingId ? <Pressable onPress={() => { setEditingId(null); setForm({}); }} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Cancelar</Text></Pressable> : null}
+                {editingId ? <Pressable onPress={() => { setEditingId(null); setForm({}); setFieldErrors({}); }} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Cancelar</Text></Pressable> : null}
                 <Pressable onPress={saveRecord} disabled={busy} style={[styles.secondaryButton, busy && styles.primaryButtonDisabled]}><Text style={styles.secondaryButtonText}>{busy ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear registro'}</Text></Pressable>
               </View>
             </View>
@@ -625,6 +664,8 @@ function createStyles(theme: FanixTheme) {
   formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   fieldWrap: { minWidth: 180, flexGrow: 1, flexBasis: 180 },
   fieldLabel: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700', marginBottom: 5 },
+  fieldError: { color: theme.colors.danger, fontSize: 11, lineHeight: 16, marginTop: 4 },
+  formInputError: { borderColor: theme.colors.danger, borderWidth: 1.5 },
   formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
   cancelButton: { minHeight: 42, paddingHorizontal: 14, justifyContent: 'center', borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.border },
   cancelButtonText: { color: theme.colors.textSecondary, fontWeight: '700' },
