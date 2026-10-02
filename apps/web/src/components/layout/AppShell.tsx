@@ -8,6 +8,7 @@ export type NavItem = {
   label: string;
   value: string;
   enabled?: boolean;
+  group?: string;
 };
 
 export function AppShell({
@@ -55,10 +56,14 @@ export function AppShell({
             style={compact ? styles.navScrollCompact : styles.navScroll}
             contentContainerStyle={compact ? styles.navRail : styles.navList}
           >
-            {navItems.map((item) => {
+            {navItems.map((item, index) => {
+              const previousGroup = index > 0 ? navItems[index - 1]?.group : undefined;
+              const showGroup = !compact && item.group && item.group !== previousGroup;
               const selected = activeItem === item.value;
               const hovered = hoveredItem === item.value;
               return (
+                <React.Fragment key={item.value}>
+                  {showGroup ? <Text style={[styles.navGroupLabel, { color: theme.colors.sidebarTextMuted }]}>{item.group}</Text> : null}
                 <Pressable
                   key={item.value}
                   onPress={() => item.enabled !== false && onSelect(item.value)}
@@ -76,6 +81,7 @@ export function AppShell({
                 >
                   <Text numberOfLines={1} style={[styles.navText, { color: selected ? theme.colors.sidebarText : theme.colors.sidebarTextMuted }, item.enabled === false && styles.navTextDisabled]}>{item.label}</Text>
                 </Pressable>
+                </React.Fragment>
               );
             })}
           </ScrollView>
@@ -168,6 +174,7 @@ const styles = StyleSheet.create({
   navScroll: { flex: 1 },
   navScrollCompact: { flexGrow: 0, minHeight: 42 },
   navList: { flexGrow: 1, gap: 3 },
+  navGroupLabel: { fontSize: 10, lineHeight: 14, fontWeight: '700', textTransform: 'uppercase', marginTop: 14, marginBottom: 4, paddingHorizontal: 10, letterSpacing: 0.5 },
   navRail: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 12 },
   navItem: { flexDirection: 'row', alignItems: 'center', minHeight: 40, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: 'transparent', borderLeftWidth: 3 },
   navItemCompact: { minHeight: 36, paddingVertical: 7, paddingHorizontal: 9 },
