@@ -91,3 +91,18 @@ test('core resource CRUD supports updates and protects referenced records', asyn
     const protectedDelete = await fetch(`${base}/products/${product.id}`, { method: 'DELETE', headers: auth }); assert.equal(protectedDelete.status, 409);
   } finally { server.close(); }
 });
+
+test('validation rejects malformed core ERP inputs', async () => {
+  if (!db.users.length) await (await import('./store.js')).seedOwner();
+  const server = await runningApp(); const base = `http://localhost:${(server.address() as { port: number }).port}/api/v1`;
+  try {
+    const login = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@demo.local', password: 'Admin123!' }) });
+    const owner = await login.json() as { token: string }; const auth = { Authorization: `Bearer ${owner.token}`, 'Content-Type': 'application/json' };
+    const invalidCustomer = await fetch(`${base}/customers`, { method: 'POST', headers: auth, body: JSON.stringify({ name: '<script>alert(1)</script>', email: 'not-an-email', phone: 'abc' }) });
+    assert.equal(invalidCustomer.status, 400);
+    const invalidProduct = await fetch(`${base}/products`, { method: 'POST', headers: auth, body: JSON.stringify({ sku: 'BAD SKU!', name: 'Producto válido', price: -1, cost: 5, stockMinimum: 1.5 }) });
+    assert.equal(invalidProduct.status, 400);
+    const invalidFinance = await fetch(`${base}/finance/transactions`, { method: 'POST', headers: auth, body: JSON.stringify({ type: 'income', category: '<b>hack</b>', amount: 0, status: 'pending' }) });
+    assert.equal(invalidFinance.status, 400);
+  } finally { server.close(); }
+});
