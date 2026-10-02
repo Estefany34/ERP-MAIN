@@ -86,7 +86,6 @@ function ERPApp() {
   const compact = width < 640;
   const [focusedField, setFocusedField] = useState('');
   const [loginHovered, setLoginHovered] = useState(false);
-  const [createHovered, setCreateHovered] = useState(false);
   const [token, setToken] = useState('');
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
@@ -99,7 +98,6 @@ function ERPApp() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadingModule, setLoadingModule] = useState(false);
-  const [formValue, setFormValue] = useState('');
   const [form, setForm] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -222,40 +220,6 @@ function ERPApp() {
       if (!response.ok) throw new Error(data?.error?.message ?? 'No se pudo eliminar el registro');
       setSuccess('Registro eliminado correctamente.'); await loadModule(active);
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo eliminar el registro'); } finally { setBusy(false); }
-  }
-
-  async function createRecord() {
-    const path = endpointMap[active];
-    if (!path || !formValue.trim()) return;
-    setBusy(true);
-    setError('');
-
-    const payload =
-      active === 'Finanzas'
-        ? { type: 'income', category: formValue, amount: 1, status: 'pending' }
-        : active === 'Incidencias'
-          ? { title: formValue }
-          : active === 'Productos'
-            ? { sku: `SKU-${Date.now()}`, name: formValue, price: 0, cost: 0, stockMinimum: 1 }
-            : active === 'Proyectos'
-              ? { name: formValue, ownerId: '00000000-0000-0000-0000-000000000000' }
-              : { name: formValue };
-
-    try {
-      const response = await fetch(`${API}/${path}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo crear el registro');
-      setFormValue('');
-      await loadModule(active);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el registro');
-    } finally {
-      setBusy(false);
-    }
   }
 
   useEffect(() => {
