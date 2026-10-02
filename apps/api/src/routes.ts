@@ -8,6 +8,25 @@ import { readDocument, writeDocument } from './storage.js';
 import { isPublicRegistrationAllowed } from './app.js';
 
 export const router = Router();
+
+const moduleCatalog = [
+  { id: 'crm', name: 'Clientes / CRM' }, { id: 'sales', name: 'Ventas y cotizaciones' },
+  { id: 'inventory', name: 'Inventario y productos' }, { id: 'purchases', name: 'Compras y proveedores' },
+  { id: 'finance', name: 'Finanzas' }, { id: 'hr', name: 'Recursos humanos' },
+  { id: 'projects', name: 'Proyectos' }, { id: 'reports', name: 'Reportes' }
+] as const;
+const plans = [
+  { id: 'starter', name: 'Starter', userLimit: 5, moduleLimit: 3, monthlyPrice: 499, includedModules: ['crm','sales','inventory'] },
+  { id: 'professional', name: 'Professional', userLimit: 25, moduleLimit: 6, monthlyPrice: 1299, includedModules: ['crm','sales','inventory','purchases','finance','reports'] },
+  { id: 'business', name: 'Business', userLimit: 100, moduleLimit: 8, monthlyPrice: 2499, includedModules: moduleCatalog.map(item => item.id) }
+] as const;
+const routeModule: Record<string, string> = {
+  customers: 'crm', products: 'inventory', inventory: 'inventory', sales: 'sales', quotes: 'sales',
+  suppliers: 'purchases', purchases: 'purchases', finance: 'finance', employees: 'hr', projects: 'projects',
+  reports: 'reports'
+};
+router.get('/catalog', (_req, res) => res.json({ plans, modules: moduleCatalog }));
+
 function audit(req: AuthRequest, entity: string, entityId: string, action: string) {
   db.audits.push({ id: id(), companyId: req.user!.companyId, userId: req.user!.id, entity, entityId, action, createdAt: now() });
 }
@@ -27,9 +46,14 @@ router.post('/auth/register', asyncRoute(async (req, res) => {
   }
   const input = parseBody(registerSchema, req.body);
   if (db.users.some(user => user.email === input.email!.toLowerCase())) return res.status(409).json({ error: { code: 'EMAIL_EXISTS', message: 'Email already registered' } });
+  const plan = plans.find(item => item.id === input.planId) ?? plans[0];
+  const requestedModules = input.modules?.length ? input.modules : [...plan.includedModules];
+  if (requestedModules.length > plan.moduleLimit) return res.status(400).json({ error: { code: 'PLAN_MODULE_LIMIT', message: 'Selected modules exceed the plan limit' } });
   const user = { id: id(), email: input.email.toLowerCase(), name: input.name, passwordHash: await hashPassword(input.password), createdAt: now() };
-  const company = { id: id(), name: input.companyName, currency: 'USD', enabledModules: ['crm', 'sales', 'inventory', 'reports'], createdAt: now() };
+  const company = { id: id(), name: input.companyName, currency: 'MXN', enabledModules: requestedModules, industry: input.industry, employeeCount: input.employeeCount, country: input.country, taxId: input.taxId, createdAt: now() };
   db.users.push(user); db.companies.push(company); db.memberships.push({ userId: user.id, companyId: company.id, role: 'owner' });
+  const createdAt = now();
+  db.subscriptions.push({ id: id(), companyId: company.id, planId: plan.id, status: 'trial', billingCycle: input.billingCycle, trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), createdAt, updatedAt: createdAt });
   const session = createSession(user.id, company.id, 'owner');
   const refreshHash = await hashRefreshToken(session.refreshToken);
   const activeSession = db.sessions.find(item => item.id === session.sessionId);
@@ -65,7 +89,32 @@ router.post('/auth/logout', requireAuth, asyncRoute(async (req: AuthRequest, res
 }));
 
 router.use(requireAuth);
+router.use((req: AuthRequest, res, next) => {
+  const key = req.path.split('/').filter(Boolean)[0] ?? '';
+  const requiredModule = routeModule[key];
+  if (!requiredModule) return next();
+  const company = db.companies.find(item => item.id === req.user!.companyId);
+  if (!company?.enabledModules.includes(requiredModule)) return res.status(403).json({ error: { code: 'MODULE_NOT_ENABLED', message: 'This module is not enabled for the company plan' } });
+  next();
+});
 router.get('/me', (req: AuthRequest, res) => { const user = db.users.find(item => item.id === req.user!.id); res.json({ user: user ? toPublicUser(user) : undefined, company: db.companies.find(item => item.id === req.user!.companyId), role: req.user!.role }); });
+router.get('/subscription', (req: AuthRequest, res) => {
+  const subscription = db.subscriptions.find(item => item.companyId === req.user!.companyId);
+  const plan = subscription ? plans.find(item => item.id === subscription.planId) : undefined;
+  res.json({ subscription, plan });
+});
+router.post('/company/invitations', requireRole('owner', 'admin'), (req: AuthRequest, res) => {
+  const schema = z.object({ email: z.string().trim().email(), role: z.enum(['admin','sales','inventory','viewer']) });
+  const input = parseBody(schema, req.body);
+  const subscription = db.subscriptions.find(item => item.companyId === req.user!.companyId);
+  const plan = subscription ? plans.find(item => item.id === subscription.planId) : plans[0];
+  const memberCount = db.memberships.filter(item => item.companyId === req.user!.companyId).length;
+  if (memberCount >= plan.userLimit) return res.status(409).json({ error: { code: 'PLAN_USER_LIMIT', message: 'User limit reached for current plan' } });
+  const invitation = { id: id(), companyId: req.user!.companyId, email: input.email.toLowerCase(), role: input.role, token: id(), status: 'pending' as const, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), createdBy: req.user!.id, createdAt: now() };
+  db.invitations.push(invitation);
+  res.status(201).json(invitation);
+});
+router.get('/company/invitations', requireRole('owner', 'admin'), (req: AuthRequest, res) => res.json(db.invitations.filter(item => item.companyId === req.user!.companyId)));
 router.get('/customers', (req: AuthRequest, res) => { const search = String(req.query.search ?? '').toLowerCase(); res.json(db.customers.filter(item => item.companyId === req.user!.companyId && (!search || item.name.toLowerCase().includes(search) || item.email?.toLowerCase().includes(search)))); });
 router.post('/customers', requireRole('owner', 'admin', 'sales'), (req: AuthRequest, res) => { const input = parseBody(customerSchema, req.body); const customer: Customer = { id: id(), companyId: req.user!.companyId, ...input, createdAt: now() }; db.customers.push(customer); db.audits.push({ id: id(), companyId: req.user!.companyId, userId: req.user!.id, action: 'create', entity: 'customer', entityId: customer.id, createdAt: now() }); res.status(201).json(customer); });
 router.get('/products', (req: AuthRequest, res) => res.json(db.products.filter(item => item.companyId === req.user!.companyId).map(product => ({ ...product, stock: db.movements.filter(move => move.companyId === product.companyId && move.productId === product.id).reduce((sum, move) => sum + (move.type === 'out' ? -move.quantity : move.quantity), 0) }))));
