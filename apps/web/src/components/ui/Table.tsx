@@ -9,14 +9,18 @@ export function DataTable({
   columns,
   onEdit,
   onDelete,
+  onAction,
+  actionLabel = 'Acción',
 }: {
   rows: Row[];
   columns: { key: string; label: string }[];
   onEdit?: (row: Row) => void;
   onDelete?: (row: Row) => void;
+  onAction?: (row: Row) => void;
+  actionLabel?: string;
 }) {
   const { theme } = useFanixTheme();
-  const hasActions = Boolean(onEdit || onDelete);
+  const hasActions = Boolean(onEdit || onDelete || onAction);
   const minWidth = Math.max(520, columns.length * 176 + (hasActions ? 150 : 0));
 
   return (
@@ -31,6 +35,7 @@ export function DataTable({
             {columns.map((column) => <Text key={column.key} numberOfLines={2} style={[styles.cell, { color: theme.colors.textPrimary }]}>{formatValue(row[column.key])}</Text>)}
             {hasActions ? (
               <View style={styles.actions}>
+                {onAction ? <Pressable accessibilityRole="button" onPress={() => onAction(row)} style={[styles.actionButton, { borderColor: theme.colors.infoBorder }]}><Text style={{ color: theme.colors.accent, fontWeight: '700' }}>{actionLabel}</Text></Pressable> : null}
                 {onEdit ? <Pressable accessibilityRole="button" onPress={() => onEdit(row)} style={[styles.actionButton, { borderColor: theme.colors.border }]}><Text style={{ color: theme.colors.accent, fontWeight: '700' }}>Editar</Text></Pressable> : null}
                 {onDelete ? <Pressable accessibilityRole="button" onPress={() => onDelete(row)} style={[styles.actionButton, { borderColor: theme.colors.dangerBorder }]}><Text style={{ color: theme.colors.danger, fontWeight: '700' }}>Eliminar</Text></Pressable> : null}
               </View>
