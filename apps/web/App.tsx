@@ -41,8 +41,10 @@ function ERPApp() {
   const dashboardVersion = useRef(0);
   const loginLock = useRef(false);
   const groups = ['Operaciones', 'Contactos', 'Administración', 'Sistema'];
+  const moduleEntitlement: Record<string, string> = { Clientes: 'crm', Productos: 'inventory', Inventario: 'inventory', Ventas: 'sales', Cotizaciones: 'sales', Compras: 'purchases', Proveedores: 'purchases', Finanzas: 'finance', Empleados: 'hr', Proyectos: 'projects', Reportes: 'reports' };
+  const enabledModules = session?.company.enabledModules ?? [];
   const groupOf = (label: string) => ['Productos', 'Inventario', 'Ventas', 'Cotizaciones', 'Compras', 'Proyectos'].includes(label) ? 'Operaciones' : ['Clientes', 'Proveedores'].includes(label) ? 'Contactos' : ['Finanzas', 'Empleados', 'Sucursales', 'Almacenes'].includes(label) ? 'Administración' : 'Sistema';
-  const moduleItems = [{ label: 'Inicio', value: 'Dashboard', group: 'General' }, ...modules.filter(module => !module.readRoles || module.readRoles.includes(role)).map(module => ({ label: module.label, value: module.label, group: groupOf(module.label) })).sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group))];
+  const moduleItems = [{ label: 'Inicio', value: 'Dashboard', group: 'General' }, ...modules.filter(module => (!module.readRoles || module.readRoles.includes(role)) && (!moduleEntitlement[module.label] || enabledModules.includes(moduleEntitlement[module.label]))).map(module => ({ label: module.label, value: module.label, group: groupOf(module.label) })).sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group))];
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
   const [email, setEmail] = useState(defaultDemoEmail);
