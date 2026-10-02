@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { API, clearTokens, loadTokens, saveTokens } from './api';
 
-type Session = { token: string; refreshToken: string; user: { id: string; name: string }; company: { name: string; currency: string }; role: string };
+type Session = { token: string; refreshToken: string; user: { id: string; name: string }; company: { name: string; currency: string; enabledModules: string[] }; role: string };
 const messages: Record<string, string> = {
   INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.', FORBIDDEN: 'Tu rol no permite esta acción.',
   VALIDATION_ERROR: 'Revisa los campos y sus valores.', INSUFFICIENT_STOCK: 'No hay existencias suficientes.',
