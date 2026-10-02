@@ -9,7 +9,7 @@ import { EmptyState } from './src/components/ui/EmptyState';
 import { LoadingState } from './src/components/ui/LoadingState';
 import { StatCard } from './src/components/ui/StatCard';
 import { DataTable } from './src/components/ui/Table';
-import { API, endpointMap, type Dashboard, type Resource } from './src/services/api';
+import { API, authenticatedRequest, clearTokens, endpointMap, loadTokens, loginRequest, logoutRequest, refreshSession, saveTokens, type Dashboard, type PublicUser, type Resource } from './src/services/api';
 import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvider';
 import type { FanixTheme } from './src/theme/fanixTheme';
 
@@ -87,6 +87,9 @@ function ERPApp() {
   const [focusedField, setFocusedField] = useState('');
   const [loginHovered, setLoginHovered] = useState(false);
   const [token, setToken] = useState('');
+  const [refreshToken, setRefreshToken] = useState('');
+  const [user, setUser] = useState<PublicUser | null>(null);
+  const [restoringSession, setRestoringSession] = useState(true);
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
   const [email, setEmail] = useState(defaultDemoEmail);
@@ -107,23 +110,35 @@ function ERPApp() {
 
   const tableColumns = useMemo(() => tableColumnsByModule[active] ?? tableColumnsByModule.Productos, [active]);
 
+  async function establishSession(nextToken: string, nextRefreshToken: string) {
+    const profile = await authenticatedRequest('me', nextToken);
+    setToken(nextToken);
+    setRefreshToken(nextRefreshToken);
+    setUser(profile.user ?? null);
+    setCompanyName(profile.company?.name ?? '');
+    setRole(profile.role ?? 'viewer');
+  }
+
+  async function requestWithSession(path: string, init: RequestInit = {}) {
+    try {
+      return await authenticatedRequest(path, token, init);
+    } catch (err) {
+      const apiError = err as Error & { status?: number };
+      if (apiError.status !== 401 || !refreshToken) throw err;
+      const renewed = await refreshSession(refreshToken);
+      await saveTokens(renewed.token, renewed.refreshToken);
+      await establishSession(renewed.token, renewed.refreshToken);
+      return authenticatedRequest(path, renewed.token, init);
+    }
+  }
+
   async function login() {
     setBusy(true);
     setError('');
     try {
-      const response = await fetch(`${API}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo iniciar sesión');
-      setCompanyName(data.company?.name ?? '');
-      setToken(data.token);
-      fetch(`${API}/me`, { headers: { Authorization: `Bearer ${data.token}` } })
-        .then((response) => response.json())
-        .then((profile) => setRole(profile.role ?? 'viewer'))
-        .catch(() => setRole('viewer'));
+      const data = await loginRequest(email, password);
+      await saveTokens(data.token, data.refreshToken);
+      await establishSession(data.token, data.refreshToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
     } finally {
@@ -143,11 +158,7 @@ function ERPApp() {
     }
 
     try {
-      const response = await fetch(`${API}/${path}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'No se pudo cargar el módulo');
+      const data = await requestWithSession(path);
       setRows(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar');
@@ -244,14 +255,32 @@ function ERPApp() {
     } finally { setBusy(false); }
   }
 
+  async function logout() {
+    try { if (token) await logoutRequest(token); } catch {}
+    await clearTokens();
+    setToken(''); setRefreshToken(''); setUser(null); setRole('viewer');
+    setError(''); setSuccess(''); setRows([]); setDashboard(null); setActive('Dashboard');
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const stored = await loadTokens();
+        if (!stored.refreshToken) return;
+        const renewed = await refreshSession(stored.refreshToken);
+        if (!mounted) return;
+        await saveTokens(renewed.token, renewed.refreshToken);
+        await establishSession(renewed.token, renewed.refreshToken);
+      } catch { await clearTokens(); }
+      finally { if (mounted) setRestoringSession(false); }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/dashboard`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((response) => response.json())
-      .then((data) => setDashboard(data))
-      .catch(() => setError('No se pudo cargar el dashboard'));
+    requestWithSession('dashboard').then(setDashboard).catch(() => setError('No se pudo cargar el dashboard'));
   }, [token]);
 
   useEffect(() => {
@@ -272,6 +301,8 @@ function ERPApp() {
 
   const inventoryAlerts = dashboard?.lowStock ?? [];
   const recentActivity = dashboard?.recentActivity ?? [];
+
+  if (restoringSession) return <SafeAreaView style={styles.loginPage}><LoadingState label="Restaurando sesión..." /></SafeAreaView>;
 
   if (!token) {
     return (
@@ -362,7 +393,8 @@ function ERPApp() {
       navItems={moduleItems}
       activeItem={active}
       onSelect={loadModule}
-      onLogout={() => { setToken(''); setRole('viewer'); setError(''); setSuccess(''); setRows([]); setDashboard(null); }}
+      userLabel={user?.name ? `${user.name} · ${role}` : role}
+      onLogout={logout}
     >
       {error ? <Card style={styles.notice}><Text accessibilityRole="alert" style={styles.noticeText}>{error}</Text></Card> : null}
       {success ? <Card style={styles.successNotice}><Text accessibilityRole="alert" style={styles.successText}>{success}</Text></Card> : null}
