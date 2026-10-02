@@ -75,3 +75,19 @@ test('quotes, payments, documents and production are integrated', async () => {
 	await fetch(`${base}/company/modules`, { method: 'PATCH', headers: auth, body: JSON.stringify({ enabledModules: ['production', 'inventory', 'sales'] }) }); const rawResponse = await fetch(`${base}/products`, { method: 'POST', headers: auth, body: JSON.stringify({ sku: `RAW-${Date.now()}`, name: 'Materia prima QA', price: 1, cost: 1 }) }); const raw = await rawResponse.json() as { id: string }; const finishedResponse = await fetch(`${base}/products`, { method: 'POST', headers: auth, body: JSON.stringify({ sku: `FIN-${Date.now()}`, name: 'Producto terminado QA', price: 4, cost: 2 }) }); const finished = await finishedResponse.json() as { id: string }; await fetch(`${base}/inventory/movements`, { method: 'POST', headers: auth, body: JSON.stringify({ productId: raw.id, type: 'in', quantity: 2 }) }); await fetch(`${base}/production/boms`, { method: 'POST', headers: auth, body: JSON.stringify({ productId: finished.id, components: [{ productId: raw.id, quantity: 1 }] }) }); const orderResponse = await fetch(`${base}/production/orders`, { method: 'POST', headers: auth, body: JSON.stringify({ productId: finished.id, quantity: 2 }) }); const order = await orderResponse.json() as { id: string }; await fetch(`${base}/production/orders/${order.id}/start`, { method: 'POST', headers: auth }); const completed = await fetch(`${base}/production/orders/${order.id}/complete`, { method: 'POST', headers: auth }); assert.equal(completed.status, 200);
 	server.close();
 });
+
+
+test('core resource CRUD supports updates and protects referenced records', async () => {
+  if (!db.users.length) await (await import('./store.js')).seedOwner();
+  const server = await runningApp(); const base = `http://localhost:${(server.address() as { port: number }).port}/api/v1`;
+  try {
+    const login = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@demo.local', password: 'Admin123!' }) });
+    const owner = await login.json() as { token: string }; const auth = { Authorization: `Bearer ${owner.token}`, 'Content-Type': 'application/json' };
+    const created = await fetch(`${base}/customers`, { method: 'POST', headers: auth, body: JSON.stringify({ name: 'Cliente CRUD' }) }); const customer = await created.json() as { id: string };
+    const updated = await fetch(`${base}/customers/${customer.id}`, { method: 'PATCH', headers: auth, body: JSON.stringify({ phone: '2460000000' }) }); assert.equal(updated.status, 200); assert.equal((await updated.json() as { phone: string }).phone, '2460000000');
+    const removed = await fetch(`${base}/customers/${customer.id}`, { method: 'DELETE', headers: auth }); assert.equal(removed.status, 204);
+    const productResponse = await fetch(`${base}/products`, { method: 'POST', headers: auth, body: JSON.stringify({ sku: `CRUD-${Date.now()}`, name: 'Producto CRUD', price: 10, cost: 5, stockMinimum: 1 }) }); const product = await productResponse.json() as { id: string };
+    await fetch(`${base}/inventory/movements`, { method: 'POST', headers: auth, body: JSON.stringify({ productId: product.id, type: 'in', quantity: 1 }) });
+    const protectedDelete = await fetch(`${base}/products/${product.id}`, { method: 'DELETE', headers: auth }); assert.equal(protectedDelete.status, 409);
+  } finally { server.close(); }
+});
