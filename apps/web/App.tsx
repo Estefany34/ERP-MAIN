@@ -15,6 +15,7 @@ import { modules } from './src/modules/config';
 import { ModuleWorkspace } from './src/modules/ModuleWorkspace';
 import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvider';
 import type { FanixTheme } from './src/theme/fanixTheme';
+import { LandingPage } from './src/landing/LandingPage';
 
 export default function App() {
   return (
@@ -31,7 +32,8 @@ function ERPApp() {
   const compact = width < 640;
   const [focusedField, setFocusedField] = useState('');
   const [loginHovered, setLoginHovered] = useState(false);
-  const { session, restoring, login: signIn, request, logout } = useSession();
+  const { session, restoring, login: signIn, register: signUp, request, logout } = useSession();
+  const [publicView, setPublicView] = useState<'landing' | 'login'>('landing');
   const token = session?.token ?? '';
   const role = session?.role ?? 'viewer';
   const requestRef = useRef(request);
@@ -106,6 +108,8 @@ function ERPApp() {
   const recentActivity = dashboard?.recentActivity ?? [];
 
   if (restoring) return <SafeAreaView style={styles.loginPage}><LoadingState label="Restaurando sesión…" /></SafeAreaView>;
+
+  if (!token && publicView === 'landing') return <LandingPage onLogin={() => setPublicView('login')} onRegister={signUp} />;
 
   if (!token) {
     return (
