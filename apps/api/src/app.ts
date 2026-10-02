@@ -44,6 +44,8 @@ export function createApp() {
     next();
   });
 
+  // Render hosts the API; the user-facing application is served by Cloudflare Pages.
+  app.get('/', (_req, res) => res.redirect(302, 'https://erp-fanixglobal.pages.dev/'));
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'fanix-api' }));
   app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok', service: 'fanix-api' }));
   app.use('/api/v1', router);
