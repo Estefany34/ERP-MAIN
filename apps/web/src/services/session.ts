@@ -15,10 +15,16 @@ export async function fetchJson(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
   try {
-    const response = await fetch(`${API}/${path}`, { ...init, signal: controller.signal });
+    const headers = new Headers(init.headers);
+    headers.set('Accept', 'application/json');
+    const response = await fetch(`${API}/${path.replace(/^\//, '')}`, { ...init, headers, signal: controller.signal });
     const text = await response.text();
     let data;
-    try { data = text ? JSON.parse(text) : {}; } catch { throw new Error('El servidor devolvió una respuesta inesperada. Intenta de nuevo.'); }
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(`El servidor respondió con un formato inválido (HTTP ${response.status}). Intenta de nuevo.`);
+    }
     return { response, data };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw new Error('El servidor tardó demasiado. Revisa tu conexión y vuelve a intentar.');
@@ -28,6 +34,11 @@ export async function fetchJson(path: string, init: RequestInit = {}) {
 }
 function errorMessage(data: any, status: number) {
   return messages[data.error?.code] ?? (status === 401 ? 'Tu sesión terminó. Inicia sesión de nuevo.' : data.error?.message ?? 'No se pudo completar la solicitud.');
+}
+function assertSessionPayload(data: any) {
+  if (!data?.token || !data?.refreshToken || !data?.user?.id || !data?.company?.name) {
+    throw new Error('La respuesta de inicio de sesión está incompleta. Intenta de nuevo.');
+  }
 }
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
@@ -55,14 +66,17 @@ export function useSession() {
   async function register(input: { email: string; password: string; name: string; companyName: string; planId: string; billingCycle: 'monthly' | 'annual'; modules: string[]; industry?: string; employeeCount?: number; country?: string; taxId?: string }) {
     const { response, data } = await fetchJson('auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
     if (!response.ok) throw new Error(errorMessage(data, response.status));
+    assertSessionPayload(data);
     await saveTokens(data.token, data.refreshToken);
     assign({ ...data, role: 'owner' });
   }
   async function login(email: string, password: string) {
     const { response, data } = await fetchJson('auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim().toLowerCase(), password }) });
     if (!response.ok) throw new Error(errorMessage(data, response.status));
+    assertSessionPayload(data);
     const me = await fetchJson('me', { headers: { Authorization: `Bearer ${data.token}` } });
     if (!me.response.ok) throw new Error(errorMessage(me.data, me.response.status));
+    if (!me.data?.role) throw new Error('No se pudo determinar el rol de la cuenta.');
     await saveTokens(data.token, data.refreshToken);
     assign({ ...data, role: me.data.role });
   }
@@ -71,7 +85,6 @@ export function useSession() {
     if (!started) throw new Error('Inicia sesión para continuar.');
     const send = (token: string) => fetchJson(path, { ...init, headers: { 'Content-Type': 'application/json', ...init.headers, Authorization: `Bearer ${token}` } });
     let result = await send(started.token);
-    // A concurrent request may already have renewed the same session.
     if (result.response.status === 401 && current.current && current.current.token !== started.token && current.current.user.id === started.user.id) result = await send(current.current.token);
     if (result.response.status === 401 && current.current) {
       if (!refresh.current) {
