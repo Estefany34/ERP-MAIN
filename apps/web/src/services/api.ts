@@ -2,12 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PRODUCTION_API = 'https://erp-fanix-global.onrender.com/api/v1';
 const configuredApi = process.env.EXPO_PUBLIC_API_URL?.trim();
+const isProductionRuntime = process.env.NODE_ENV === 'production';
 
-// Release builds must never inherit a stale localhost/staging URL from the
-// machine that produced the APK. Development can still override the API.
-export const API = (__DEV__
-  ? (configuredApi || 'http://localhost:4000/api/v1')
-  : PRODUCTION_API
+// Production releases are always pinned to Render so an APK cannot inherit a
+// stale localhost/staging URL. Tests and non-production builds may inject an
+// explicit API URL; local development keeps localhost as its final fallback.
+export const API = (
+  !__DEV__ && isProductionRuntime
+    ? PRODUCTION_API
+    : (configuredApi || (__DEV__ ? 'http://localhost:4000/api/v1' : PRODUCTION_API))
 ).replace(/\/+$/, '');
 
 const ACCESS_TOKEN_KEY = '@fanix/access-token';
