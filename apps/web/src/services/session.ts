@@ -4,6 +4,7 @@ import { API, clearTokens, loadTokens, saveTokens } from './api';
 type Session = { token: string; refreshToken: string; user: { id: string; name: string }; company: { name: string; currency: string; enabledModules: string[] }; role: string };
 const messages: Record<string, string> = {
   INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.', FORBIDDEN: 'Tu rol no permite esta acción.',
+  NO_MEMBERSHIP: 'Tu cuenta no tiene una empresa activa asignada.',
   VALIDATION_ERROR: 'Revisa los campos y sus valores.', INSUFFICIENT_STOCK: 'No hay existencias suficientes.',
   SKU_EXISTS: 'Ese SKU ya existe.', OWNER_NOT_MEMBER: 'Selecciona un responsable de tu empresa.',
   PRODUCT_NOT_FOUND: 'El producto ya no existe o no pertenece a tu empresa.', CUSTOMER_NOT_FOUND: 'Selecciona un cliente de tu empresa.',
@@ -19,21 +20,29 @@ export async function fetchJson(path: string, init: RequestInit = {}) {
     headers.set('Accept', 'application/json');
     const response = await fetch(`${API}/${path.replace(/^\//, '')}`, { ...init, headers, signal: controller.signal });
     const text = await response.text();
-    let data;
-    try {
-      data = text ? JSON.parse(text) : {};
-    } catch {
-      throw new Error(`El servidor respondió con un formato inválido (HTTP ${response.status}). Intenta de nuevo.`);
+    let data: any = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const contentType = response.headers.get('content-type') ?? '';
+        const preview = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+        throw new Error(`El servidor devolvió una respuesta inesperada (HTTP ${response.status}${contentType ? `, ${contentType}` : ''})${preview ? `: ${preview}` : ''}`);
+      }
     }
     return { response, data };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw new Error('El servidor tardó demasiado. Revisa tu conexión y vuelve a intentar.');
-    if (error instanceof TypeError) throw new Error('No se pudo conectar. Revisa tu conexión e intenta de nuevo.');
+    if (error instanceof TypeError) throw new Error(`No se pudo conectar con Fanix Global (${API}). Revisa tu conexión e intenta de nuevo.`);
     throw error;
   } finally { clearTimeout(timeout); }
 }
 function errorMessage(data: any, status: number) {
-  return messages[data.error?.code] ?? (status === 401 ? 'Tu sesión terminó. Inicia sesión de nuevo.' : data.error?.message ?? 'No se pudo completar la solicitud.');
+  const code = data?.error?.code;
+  if (code && messages[code]) return messages[code];
+  if (status === 401) return 'Correo o contraseña incorrectos.';
+  if (status === 403) return data?.error?.message ?? 'Tu cuenta no tiene permiso para realizar esta acción.';
+  return data?.error?.message ?? `No se pudo completar la solicitud (HTTP ${status}).`;
 }
 function assertSessionPayload(data: any) {
   if (!data?.token || !data?.refreshToken || !data?.user?.id || !data?.company?.name) {
@@ -111,8 +120,8 @@ export function useSession() {
   async function logout() {
     const active = current.current;
     if (!active) return;
-    try { await request('auth/logout', { method: 'POST' }); }
-    finally { await clearTokens(); assign(null); }
+    try { await request('auth/logout', { method: 'POST' });
+    } finally { await clearTokens(); assign(null); }
   }
   return { session, restoring, login, register, request, logout };
 }
