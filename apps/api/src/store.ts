@@ -42,7 +42,7 @@ export async function seedOwner(env = process.env) {
   if (env.NODE_ENV === 'production') return;
   if (db.users.length > 0) return;
   const user: User = { id: randomUUID(), email: 'admin@demo.local', name: 'Administrador', passwordHash: await bcrypt.hash(env.DEMO_PASSWORD ?? 'Admin123!', 12), createdAt: new Date().toISOString() };
-  const company: Company = { id: randomUUID(), name: 'Empresa demo', currency: 'USD', enabledModules: ['crm', 'sales', 'inventory', 'purchases', 'reports'], createdAt: new Date().toISOString() };
+  const company: Company = { id: randomUUID(), name: 'Empresa demo', currency: 'USD', enabledModules: ['crm', 'sales', 'inventory', 'purchases', 'finance', 'hr', 'projects', 'reports'], createdAt: new Date().toISOString() };
   db.users.push(user); db.companies.push(company); db.memberships.push({ userId: user.id, companyId: company.id, role: 'owner' });
   db.subscriptions.push({ id: randomUUID(), companyId: company.id, planId: 'business', status: 'active', billingCycle: 'monthly', createdAt: now(), updatedAt: now() });
 }
