@@ -46,7 +46,9 @@ try {
   async function fill(label, value) { const input = renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === label); assert.equal(input.length, 1, `One field: ${label}`); await act(async () => input[0].props.onChangeText(value)); }
   async function until(predicate, label) { for (let attempt = 0; attempt < 150; attempt++) { if (predicate()) return; await act(async () => { await delay(20); }); } assert.fail(`Timed out: ${label}\n${content()}`); }
   await act(async () => { renderer = create(React.createElement(App)); });
-  await until(() => buttons('Iniciar sesión').length, 'Session restoration');
+  await until(() => buttons('Iniciar sesión').length, 'Landing page');
+  await press('Iniciar sesión');
+  await until(() => renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Correo electrónico').length === 1, 'Login form');
   await press('Iniciar sesión'); assert.ok(content().includes('Escribe un correo'));
   await fill('Correo electrónico', ' ADMIN@DEMO.LOCAL '); await fill('Contraseña', 'Admin123!');
   await press('Iniciar sesión'); await until(() => content().includes('Empresa demo'), 'Login/dashboard');
@@ -100,7 +102,7 @@ try {
   await until(() => content().includes('Administrador · Propietario'), 'Persistent session restored');
   assert.equal(db.sessions.length, 1, 'Restoration refreshes the existing server session');
   await press('Cerrar sesión'); await until(() => buttons('Iniciar sesión').length, 'Logout'); assert.ok(db.sessions.every(session => session.revokedAt));
-  console.log('PASS: login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase callbacks with final stock=6, narrow-screen rendering and server logout.');
+  console.log('PASS: landing/login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase callbacks with final stock=6, narrow-screen rendering and server logout.');
 } finally {
   if (renderer) await act(async () => renderer.unmount());
   server.close(); await rm(temporary, { recursive: true, force: true });

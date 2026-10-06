@@ -107,9 +107,30 @@ router.post('/company/invitations', requireRole('owner', 'admin'), (req: AuthReq
   const schema = z.object({ email: z.string().trim().email(), role: z.enum(['admin','sales','inventory','viewer']) });
   const input = parseBody(schema, req.body);
   const subscription = db.subscriptions.find(item => item.companyId === req.user!.companyId);
-  const plan = subscription ? plans.find(item => item.id === subscription.planId) : plans[0];
+  const plan =
+    (subscription
+      ? plans.find(item => item.id === subscription.planId)
+      : undefined) ?? plans[0];
+
+  if (!plan) {
+    return res.status(500).json({
+      error: {
+        code: 'PLAN_CONFIG_ERROR',
+        message: 'No plans configured'
+      }
+    });
+  }
+
   const memberCount = db.memberships.filter(item => item.companyId === req.user!.companyId).length;
-  if (memberCount >= plan.userLimit) return res.status(409).json({ error: { code: 'PLAN_USER_LIMIT', message: 'User limit reached for current plan' } });
+
+  if (memberCount >= plan.userLimit) {
+    return res.status(409).json({
+      error: {
+        code: 'PLAN_USER_LIMIT',
+        message: 'User limit reached for current plan'
+      }
+    });
+  }
   const invitation = { id: id(), companyId: req.user!.companyId, email: input.email.toLowerCase(), role: input.role, token: id(), status: 'pending' as const, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), createdBy: req.user!.id, createdAt: now() };
   db.invitations.push(invitation);
   res.status(201).json(invitation);

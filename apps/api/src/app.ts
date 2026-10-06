@@ -7,6 +7,7 @@ import { adminRouter } from './adminRoutes.js';
 import { requireAuth } from './auth.js';
 import { errorHandler } from './http.js';
 import { persistDatabase } from './database.js';
+import { sendWelcomeEmail } from './email.js';
 
 export function getAllowedOrigins(envName = process.env.NODE_ENV ?? 'development', env = process.env) {
   const raw = env.CORS_ORIGIN ?? '';
@@ -37,6 +38,20 @@ export function createApp() {
   app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300 }));
   app.use((req, res, next) => {
     res.on('finish', () => { if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && res.statusCode < 400) void persistDatabase(); });
+    next();
+  });
+  app.use('/api/v1/auth/register', (req, res, next) => {
+    const originalJson = res.json.bind(res);
+    res.json = ((body: unknown) => {
+      if (res.statusCode === 201 && body && typeof body === 'object' && 'user' in body && 'company' in body) {
+        const payload = body as { user?: { email?: string; name?: string }; company?: { name?: string } };
+        if (payload.user?.email && payload.user.name && payload.company?.name) {
+          void sendWelcomeEmail({ email: payload.user.email, name: payload.user.name, companyName: payload.company.name })
+            .catch(error => console.error('[email] Welcome email could not be sent:', error));
+        }
+      }
+      return originalJson(body);
+    }) as typeof res.json;
     next();
   });
   app.get('/', (_req, res) => res.redirect(302, 'https://erp-fanixglobal.pages.dev/'));

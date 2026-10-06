@@ -13,6 +13,6 @@ void connectDatabase().then(async result => {
   if (process.env.NODE_ENV !== 'production') await seedOwner();
   const app = createApp();
   app.listen(port, () => console.log(`Fanix API listening on port ${port}`));
-  const shutdown = () => void closeDatabase().finally(() => process.exit(0));
+  const shutdown = (): void => { void closeDatabase().finally((): never => process.exit(0)); };
   process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
 }).catch(error => { console.error('Database initialization failed'); process.exit(1); });
