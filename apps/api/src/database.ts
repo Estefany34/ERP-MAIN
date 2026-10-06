@@ -49,7 +49,7 @@ export function persistDatabase() {
     { key: 'primary' },
     { $set: { key: 'primary', version: 1, state: snapshot(), updatedAt: new Date() } },
     { upsert: true }
-  ).then(() => undefined));
+  ).then((): undefined => undefined));
   return writeQueue;
 }
 
