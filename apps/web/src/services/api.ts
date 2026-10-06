@@ -1,7 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const PRODUCTION_API = 'https://erp-fanix-global.onrender.com/api/v1';
 const configuredApi = process.env.EXPO_PUBLIC_API_URL?.trim();
-export const API = (configuredApi || (__DEV__ ? 'http://localhost:4000/api/v1' : 'https://erp-fanix-global.onrender.com/api/v1')).replace(/\/+$/, '');
+
+// Release builds must never inherit a stale localhost/staging URL from the
+// machine that produced the APK. Development can still override the API.
+export const API = (__DEV__
+  ? (configuredApi || 'http://localhost:4000/api/v1')
+  : PRODUCTION_API
+).replace(/\/+$/, '');
 
 const ACCESS_TOKEN_KEY = '@fanix/access-token';
 const REFRESH_TOKEN_KEY = '@fanix/refresh-token';
@@ -86,7 +93,12 @@ export async function clearTokens() {
 
 async function parseResponse(response: Response) {
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`El servidor respondió con un formato inválido (HTTP ${response.status}).`);
+  }
   if (!response.ok) {
     const error = new Error(data?.error?.message ?? 'No se pudo completar la solicitud') as Error & { status?: number; code?: string };
     error.status = response.status;
@@ -99,7 +111,7 @@ async function parseResponse(response: Response) {
 export async function loginRequest(email: string, password: string): Promise<Session> {
   const response = await fetch(`${API}/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ email, password }),
   });
   return parseResponse(response);
@@ -108,7 +120,7 @@ export async function loginRequest(email: string, password: string): Promise<Ses
 export async function refreshSession(refreshToken: string): Promise<Session> {
   const response = await fetch(`${API}/auth/refresh`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ refreshToken }),
   });
   return parseResponse(response);
@@ -117,6 +129,7 @@ export async function refreshSession(refreshToken: string): Promise<Session> {
 export async function authenticatedRequest(path: string, token: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${token}`);
+  headers.set('Accept', 'application/json');
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await fetch(`${API}/${path.replace(/^\//, '')}`, { ...init, headers });
   return parseResponse(response);
