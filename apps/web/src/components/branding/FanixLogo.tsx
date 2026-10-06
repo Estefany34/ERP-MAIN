@@ -7,7 +7,7 @@ type FanixLogoProps = {
   variant?: 'default' | 'inverse';
 };
 
-export function FanixLogo({ compact = false, size = 'default', variant = 'default' }: FanixLogoProps) {
+export function FanixLogo({ compact = false, size = 'default', variant = 'inverse' }: FanixLogoProps) {
   return (
     <View style={styles.wrap}>
       <Image
