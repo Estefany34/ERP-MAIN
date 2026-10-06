@@ -65,7 +65,9 @@ test('QA: forms, editing, permissions, references and stock invariants', async (
     assert.equal((await call('products', 'POST', { name: 'No permitido', sku: 'QA-V', price: 0, cost: 0 }, viewer)).status, 403);
     assert.equal((await call(`customers/${customer.body.id}`, 'PATCH', { name: 'No permitido' }, viewer)).status, 403);
     assert.equal((await call('sales', 'GET', undefined, viewer)).status, 403);
-    const otherCompanyId = id(); const otherUserId = id(); db.memberships.push({ userId: otherUserId, companyId: otherCompanyId, role: 'owner' });
+    const otherCompanyId = id(); const otherUserId = id();
+    db.companies.push({ id: otherCompanyId, name: 'Otra empresa QA', currency: 'MXN', enabledModules: ['crm', 'sales', 'inventory', 'purchases', 'finance', 'hr', 'projects', 'reports'], createdAt: now() });
+    db.memberships.push({ userId: otherUserId, companyId: otherCompanyId, role: 'owner' });
     const other = issueToken(otherUserId, otherCompanyId, 'owner');
     assert.equal((await call(`products/${product.body.id}`, 'PATCH', { price: 0 }, other)).status, 404);
     assert.equal((await call('company/members', 'GET', undefined, other)).body.length, 0);
