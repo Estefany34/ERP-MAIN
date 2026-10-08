@@ -14,7 +14,7 @@ const React = require('react');
 const { create, act } = require('react-test-renderer');
 const { build } = require('esbuild');
 const { createApp } = await import('../apps/api/dist/app.js');
-const { seedOwner, db } = await import('../apps/api/dist/store.js');
+const { seedOwner, db, id } = await import('../apps/api/dist/store.js');
 await seedOwner();
 const server = createApp().listen(0);
 await new Promise(resolve => server.once('listening', resolve));
@@ -44,6 +44,7 @@ try {
   function buttons(label) { return renderer.root.findAll(node => node.type === 'Pressable' && text(node) === label); }
   async function press(label) { const found = buttons(label); assert.equal(found.length, 1, `One button: ${label}`); assert.ok(!found[0].props.disabled, `${label} is enabled`); await act(async () => { await found[0].props.onPress(); }); }
   async function fill(label, value) { const input = renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === label); assert.equal(input.length, 1, `One field: ${label}`); await act(async () => input[0].props.onChangeText(value)); }
+  async function choose(label, value) { const choice = renderer.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityLabel === label); assert.equal(choice.length, 1, `One selector: ${label}`); await act(async () => choice[0].props.onPress()); await press(value); }
   async function until(predicate, label) { for (let attempt = 0; attempt < 150; attempt++) { if (predicate()) return; await act(async () => { await delay(20); }); } assert.fail(`Timed out: ${label}\n${content()}`); }
   await act(async () => { renderer = create(React.createElement(App)); });
   await until(() => buttons('Iniciar sesión').length, 'Landing page');
@@ -95,18 +96,36 @@ try {
   await until(() => buttons('Aprobar').length && !buttons('Aprobar')[0].props.disabled, 'Purchase saved'); await press('Aprobar'); await until(() => buttons('Recibir mercancía').length && !buttons('Recibir mercancía')[0].props.disabled, 'Purchase approved'); await press('Recibir mercancía'); await until(() => !buttons('Recibir mercancía').length && !buttons('Actualizar')[0].props.disabled, 'Purchase received');
   const finalStock = db.movements.reduce((sum, movement) => sum + (movement.type === 'out' ? -movement.quantity : movement.quantity), 0); assert.equal(finalStock, 6);
   const savedSales = [...db.sales];
-  const excludedSale = { ...db.sales[0], id: 'qa-excluded-report-sale', total: 999 };
-  db.sales.push(excludedSale);
+  const savedCustomers = [...db.customers];
+  const targetCustomerId = db.sales[0].customerId;
+  const otherCustomer = { ...db.customers[0], id: id(), name: 'Cliente fuera del filtro', email: 'otro-cliente@qa.local' };
+  const zeroCustomer = { ...db.customers[0], id: id(), name: 'Cliente sin ventas', email: 'sin-ventas@qa.local' };
+  const manySales = Array.from({ length: 12 }, (_, index) => ({
+    id: id(), companyId: db.sales[0].companyId, customerId: targetCustomerId, items: [],
+    total: 50 + index, status: 'confirmed', idempotencyKey: id(), createdAt: new Date().toISOString(),
+  }));
+  const excludedSale = { ...db.sales[0], id: id(), customerId: otherCustomer.id, total: 999 };
+  db.customers.push(otherCustomer, zeroCustomer);
+  db.sales.push(...manySales, excludedSale);
+  const matchingSales = [...savedSales, ...manySales].filter(sale => sale.customerId === targetCustomerId);
   const originalDocument = globalThis.document;
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
   const reportDownloads = [];
   try {
-    await press('Reportes'); await until(() => buttons('Exportar PDF').length && !buttons('Actualizar')[0].props.disabled, 'Reports loaded');
+    await press('Reportes'); await until(() => buttons('Generar reporte').length && !buttons('Generar reporte')[0].props.disabled, 'Report filters loaded');
     assert.equal(buttons('Exportar Excel').length, 1);
-    assert.ok(!buttons('Exportar PDF')[0].props.disabled && !buttons('Exportar Excel')[0].props.disabled);
-    await fill('Buscar en Reportes', db.sales[0].id);
-    assert.ok(content().includes(db.sales[0].id));
+    assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Exports are disabled before a report is generated');
+    globalThis.fetch = async (url, init) => String(url) === `${api}/reports/sales`
+      ? new Response(JSON.stringify({ error: { message: 'Error de reporte simulado' } }), { status: 503 })
+      : actualFetch(url, init);
+    await press('Generar reporte');
+    await until(() => content().includes('Error de reporte simulado') && !buttons('Generar reporte')[0].props.disabled, 'Report error surfaced');
+    assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Failed reports cannot be exported');
+    globalThis.fetch = actualFetch;
+    await press('Generar reporte');
+    await until(() => !buttons('Exportar PDF')[0].props.disabled, 'Sales report generated');
+    assert.ok(matchingSales.every(sale => content().includes(sale.id)));
     URL.createObjectURL = blob => { reportDownloads.push({ blob }); return `blob:fanix-report-${reportDownloads.length}`; };
     URL.revokeObjectURL = () => {};
     globalThis.document = {
@@ -116,30 +135,53 @@ try {
       },
     };
     await press('Exportar PDF');
+    await until(() => buttons('Exportar PDF').length && !buttons('Exportar PDF')[0].props.disabled, 'Initial PDF export complete');
     await press('Exportar Excel');
-    const pdfText = new TextDecoder().decode(await reportDownloads[0].blob.arrayBuffer());
+    await until(() => reportDownloads.length === 2 && buttons('Exportar Excel').length && !buttons('Exportar Excel')[0].props.disabled, 'Initial Excel export complete');
+    const allPdfText = new TextDecoder().decode(await reportDownloads[0].blob.arrayBuffer());
     assert.match(reportDownloads[0].filename, /\.pdf$/);
-    const selectedIdPrefix = db.sales[0].id.slice(0, 8);
-    assert.ok(pdfText.includes(selectedIdPrefix) && !pdfText.includes(excludedSale.id.slice(0, 8)), 'PDF exports only the active search results');
-    const reportXlsx = require('@e965/xlsx').read(await reportDownloads[1].blob.arrayBuffer(), { type: 'array' });
-    const reportRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Ventas, { header: 1, raw: true });
+    assert.ok(allPdfText.includes(excludedSale.id), 'Unfiltered PDF includes the additional customer');
+    const allWorkbook = require('@e965/xlsx').read(await reportDownloads[1].blob.arrayBuffer(), { type: 'array' });
     assert.match(reportDownloads[1].filename, /\.xlsx$/);
-    assert.deepEqual(reportRows.slice(5, 6).map(row => row[0]), [db.sales[0].id], 'Excel exports the same active search results as PDF');
-    assert.equal(reportRows.find(row => row[0] === 'Monto total')[1], db.sales[0].total, 'Filtered export summary excludes unselected sales');
+    assert.deepEqual(allWorkbook.SheetNames, ['Resumen', 'Ventas']);
+    const allRows = require('@e965/xlsx').utils.sheet_to_json(allWorkbook.Sheets.Ventas, { header: 1, raw: true });
+    assert.equal(allRows.length - 1, savedSales.length + manySales.length + 1);
+
+    await choose('Cliente: Todos', db.customers.find(customer => customer.id === targetCustomerId).name);
+    assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Changing filters invalidates the previous export data');
+    await press('Generar reporte');
+    await until(() => !buttons('Exportar PDF')[0].props.disabled, 'Filtered sales report generated');
+    await press('Exportar PDF');
+    await until(() => buttons('Exportar PDF').length && !buttons('Exportar PDF')[0].props.disabled, 'Filtered PDF export complete');
+    await press('Exportar Excel');
+    await until(() => reportDownloads.length === 4 && buttons('Exportar Excel').length && !buttons('Exportar Excel')[0].props.disabled, 'Filtered Excel export complete');
+    const pdfText = new TextDecoder().decode(await reportDownloads[2].blob.arrayBuffer());
+    assert.ok(pdfText.includes(matchingSales[0].id) && !pdfText.includes(excludedSale.id), 'Filtered PDF excludes other customers');
+    for (const sale of matchingSales) assert.ok(pdfText.includes(sale.id), `Filtered PDF contains ${sale.id}`);
+    const reportXlsx = require('@e965/xlsx').read(await reportDownloads[3].blob.arrayBuffer(), { type: 'array' });
+    const reportRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Ventas, { header: 1, raw: true });
+    const exportedIds = reportRows.slice(1).map(row => row[0]);
+    assert.deepEqual(exportedIds, matchingSales.map(sale => sale.id), 'Excel exports the same complete filtered rows as PDF, including more than ten records');
+    const summaryRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Resumen, { header: 1, raw: true });
+    assert.equal(summaryRows.find(row => row[0] === 'Total vendido')[1], matchingSales.reduce((sum, sale) => sum + sale.total, 0), 'Filtered export summary matches the included sale total');
+
+    await choose(`Cliente: ${db.customers.find(customer => customer.id === targetCustomerId).name}`, otherCustomer.name);
+    await press('Generar reporte');
+    await until(() => !buttons('Exportar PDF')[0].props.disabled, 'Single-sale report generated');
+    assert.ok(content().includes('1 registros'), 'One matching record can be reported');
+
+    await choose(`Cliente: ${otherCustomer.name}`, zeroCustomer.name);
+    await press('Generar reporte');
+    await until(() => content().includes('Sin registros para estos filtros'), 'Empty report generated');
+    assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Filtered empty results cannot be exported');
   } finally {
     if (originalDocument === undefined) delete globalThis.document;
     else globalThis.document = originalDocument;
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
     db.sales.splice(0, db.sales.length, ...savedSales);
+    db.customers.splice(0, db.customers.length, ...savedCustomers);
   }
-  await fill('Buscar en Reportes', 'sin coincidencias');
-  assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Filtered empty results cannot be exported');
-  db.sales.splice(0);
-  await fill('Buscar en Reportes', ''); await press('Actualizar'); await until(() => !buttons('Actualizar')[0].props.disabled, 'Empty reports loaded');
-  assert.ok(content().includes('Sin registros'));
-  assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Empty reports cannot be exported');
-  db.sales.push(...savedSales);
   await press('Incidencias'); await until(() => !buttons('Actualizar')[0].props.disabled, 'Mobile incident list');
   globalThis.__qaWidth = 390; await act(async () => renderer.update(React.createElement(App)));
   assert.ok(renderer.root.findAll(node => node.type === 'Text' && text(node) === 'Incidencia desde UI').length);
@@ -148,7 +190,7 @@ try {
   await until(() => content().includes('Administrador · Propietario'), 'Persistent session restored');
   assert.equal(db.sessions.length, 1, 'Restoration refreshes the existing server session');
   await press('Cerrar sesión'); await until(() => buttons('Iniciar sesión').length, 'Logout'); assert.ok(db.sessions.every(session => session.revokedAt));
-  console.log('PASS: landing/login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase, filtered PDF/XLSX parity, empty-state export guards, final stock=6, narrow-screen rendering and server logout.');
+  console.log('PASS: landing/login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase, report loading/one/many/zero, customer filtering, PDF/XLSX parity beyond ten rows, final stock=6, narrow-screen rendering and server logout.');
 } finally {
   if (renderer) await act(async () => renderer.unmount());
   server.close(); await rm(temporary, { recursive: true, force: true });
