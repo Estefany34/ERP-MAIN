@@ -17,7 +17,7 @@ const FanixThemeContext = createContext<FanixThemeContextValue | null>(null);
 
 export function FanixThemeProvider({ children }: { children: React.ReactNode }) {
   const systemColorScheme = useColorScheme();
-  const [mode, setModeState] = useState<ThemeMode>('system');
+  const [mode, setModeState] = useState<ThemeMode>('dark');
 
   useEffect(() => {
     let mounted = true;
