@@ -180,7 +180,6 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{error}</Text> : null}
     {success ? <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.accent }}>{success}</Text> : null}
     {pendingDelete ? <View style={{ gap: 10 }}><Text style={{ color: theme.colors.danger }}>¿Eliminar {pendingDelete.name}? Esta acción es permanente. Los registros relacionados impedirán la eliminación.</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{button('Confirmar eliminación', () => { void action(`${config.path}/${pendingDelete.id}`, 'DELETE').then(() => setPendingDelete(null)); }, busy)}{button('Cancelar eliminación', () => setPendingDelete(null), busy)}</View></View> : null}
-    {config.label === 'Documentos' ? <Text style={{ color: theme.colors.textSecondary }}>Consulta del catálogo de documentos. La carga y descarga de archivos desde esta interfaz sigue pendiente.</Text> : null}
     {formOpen && canWrite ? <View style={{ gap: 12, paddingVertical: 12 }}>
       <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{editing ? 'Editar registro' : 'Nuevo registro'}</Text>
       {(config.fields ?? []).map(field => <FieldInput key={field.key} field={field} value={values[field.key] ?? ''} onChange={value => change(field.key, value)} choices={choices[field.source ?? ''] ?? []} disabled={busy} />)}

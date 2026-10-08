@@ -53,6 +53,7 @@ try {
   await fill('Correo electrónico', ' ADMIN@DEMO.LOCAL '); await fill('Contraseña', 'Admin123!');
   await press('Iniciar sesión'); await until(() => content().includes('Empresa demo'), 'Login/dashboard');
   assert.ok(content().includes('Administrador · Propietario'));
+  assert.equal(buttons('Documentos').length, 0, 'The removed module is not present in the sidebar');
   await press('Clientes'); await until(() => buttons('Nuevo registro').length && !buttons('Actualizar')[0].props.disabled, 'Customers loaded');
   const actualFetch = globalThis.fetch;
   let expiredOnce = true;
@@ -147,6 +148,10 @@ try {
   await act(async () => { renderer = create(React.createElement(App)); });
   await until(() => content().includes('Administrador · Propietario'), 'Persistent session restored');
   assert.equal(db.sessions.length, 1, 'Restoration refreshes the existing server session');
+  for (const module of ['Inicio', 'Ventas', 'Cotizaciones', 'Compras', 'Clientes', 'Proveedores', 'Auditoría', 'Reportes']) {
+    await press(module);
+    if (module !== 'Inicio') await until(() => buttons('Actualizar').length && !buttons('Actualizar')[0].props.disabled, `${module} navigation`);
+  }
   await press('Cerrar sesión'); await until(() => buttons('Iniciar sesión').length, 'Logout'); assert.ok(db.sessions.every(session => session.revokedAt));
   console.log('PASS: landing/login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase, filtered PDF/XLSX parity, empty-state export guards, final stock=6, narrow-screen rendering and server logout.');
 } finally {

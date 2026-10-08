@@ -27,7 +27,6 @@ export const modules: ModuleConfig[] = [
   { label: 'Notificaciones', path: 'notifications', columns: [{ key: 'message', label: 'Mensaje' }, { key: 'readAt', label: 'Lectura' }, date] },
   { label: 'Sucursales', path: 'branches', fields: [name, { key: 'address', label: 'Dirección', maxLength: 240 }], columns: [colName, { key: 'address', label: 'Dirección' }, { key: 'active', label: 'Activa' }], writeRoles: managers, editable: true },
   { label: 'Almacenes', path: 'warehouses', fields: [name, { key: 'branchId', label: 'Sucursal', source: 'branches' }], columns: [colName, { key: 'branchId', label: 'Sucursal' }], writeRoles: inventory },
-  { label: 'Documentos', path: 'documents', columns: [colName, { key: 'category', label: 'Categoría' }, date], readRoles: managers },
   { label: 'Auditoría', path: 'audit-logs', columns: [{ key: 'action', label: 'Acción' }, { key: 'entity', label: 'Entidad' }, date], readRoles: managers },
   { label: 'Reportes', path: 'sales', columns: [{ key: 'id', label: 'ID' }, { key: 'customerId', label: 'Cliente' }, { key: 'total', label: 'Total' }, status, date], readRoles: sales },
 ];

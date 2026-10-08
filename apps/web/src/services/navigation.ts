@@ -2,12 +2,18 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { modules } from '../modules/config';
 
-function routeFromUrl() {
+export function routeFromUrl() {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return 'Dashboard';
   try {
     const value = decodeURIComponent(window.location.hash.replace(/^#\/?/, ''));
-    return modules.some(module => module.label === value) ? value : 'Dashboard';
-  } catch { return 'Dashboard'; }
+    if (modules.some(module => module.label === value)) return value;
+  } catch {
+    // Invalid URL fragments are redirected to a known route below.
+  }
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  const safePath = pathname.toLocaleLowerCase() === '/documentos' ? '/' : pathname;
+  window.history.replaceState(null, '', `${safePath}${window.location.search}#/Dashboard`);
+  return 'Dashboard';
 }
 export function useModuleNavigation() {
   const [active, setActive] = useState(routeFromUrl);
