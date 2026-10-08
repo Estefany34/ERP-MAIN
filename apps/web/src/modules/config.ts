@@ -29,6 +29,6 @@ export const modules: ModuleConfig[] = [
   { label: 'Almacenes', path: 'warehouses', fields: [name, { key: 'branchId', label: 'Sucursal', source: 'branches' }], columns: [colName, { key: 'branchId', label: 'Sucursal' }], writeRoles: inventory },
   { label: 'Documentos', path: 'documents', columns: [colName, { key: 'category', label: 'Categoría' }, date], readRoles: managers },
   { label: 'Auditoría', path: 'audit-logs', columns: [{ key: 'action', label: 'Acción' }, { key: 'entity', label: 'Entidad' }, date], readRoles: managers },
-  { label: 'Reportes', path: 'sales', columns: [{ key: 'id', label: 'ID' }, { key: 'customerId', label: 'Cliente' }, { key: 'total', label: 'Total' }, status, date], readRoles: sales },
+  { label: 'Reportes', path: 'reports', columns: [] },
 ];
 export const labels: Record<string, string> = { active: 'Activo', inactive: 'Inactivo', planned: 'Planeado', closed: 'Cerrado', open: 'Abierta', resolved: 'Resuelta', pending: 'Pendiente', paid: 'Pagado', income: 'Ingreso', expense: 'Egreso', in: 'Entrada', out: 'Salida', adjustment: 'Ajuste', draft: 'Borrador', confirmed: 'Confirmada', approved: 'Aprobada', rejected: 'Rechazada', received: 'Recibida', sent: 'Enviada', accepted: 'Aceptada', expired: 'Vencida' };

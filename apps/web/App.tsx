@@ -13,6 +13,7 @@ import { useSession } from './src/services/session';
 import { useModuleNavigation } from './src/services/navigation';
 import { modules } from './src/modules/config';
 import { ModuleWorkspace } from './src/modules/ModuleWorkspace';
+import { ReportsWorkspace } from './src/modules/ReportsWorkspace';
 import { FanixThemeProvider, useFanixTheme } from './src/theme/FanixThemeProvider';
 import type { FanixTheme } from './src/theme/fanixTheme';
 import { LandingPage } from './src/landing/LandingPage';
@@ -44,7 +45,6 @@ function ERPApp() {
   const moduleEntitlement: Record<string, string> = { Clientes: 'crm', Productos: 'inventory', Inventario: 'inventory', Ventas: 'sales', Cotizaciones: 'sales', Compras: 'purchases', Proveedores: 'purchases', Finanzas: 'finance', Empleados: 'hr', Proyectos: 'projects', Reportes: 'reports' };
   const enabledModules = session?.company.enabledModules ?? [];
   const groupOf = (label: string) => ['Productos', 'Inventario', 'Ventas', 'Cotizaciones', 'Compras', 'Proyectos'].includes(label) ? 'Operaciones' : ['Clientes', 'Proveedores'].includes(label) ? 'Contactos' : ['Finanzas', 'Empleados', 'Sucursales', 'Almacenes'].includes(label) ? 'Administración' : 'Sistema';
-  const moduleItems = [{ label: 'Inicio', value: 'Dashboard', group: 'General' }, ...modules.filter(module => (!module.readRoles || module.readRoles.includes(role)) && (!moduleEntitlement[module.label] || enabledModules.includes(moduleEntitlement[module.label]))).map(module => ({ label: module.label, value: module.label, group: groupOf(module.label) })).sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group))];
   const defaultDemoEmail = __DEV__ ? 'admin@demo.local' : '';
   const defaultDemoPassword = __DEV__ ? 'Admin123!' : '';
   const [email, setEmail] = useState(defaultDemoEmail);
@@ -52,9 +52,11 @@ function ERPApp() {
   const [showPassword, setShowPassword] = useState(false);
   const [active, setActive] = useModuleNavigation();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const moduleItems = [{ label: 'Inicio', value: 'Dashboard', group: 'General' }, ...modules.filter(module => (!module.readRoles || module.readRoles.includes(role)) && (module.label !== 'Reportes' || permissions.includes('reports.view')) && (!moduleEntitlement[module.label] || enabledModules.includes(moduleEntitlement[module.label]))).map(module => ({ label: module.label, value: module.label, group: groupOf(module.label) })).sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group))];
 
   async function login() {
     if (loginLock.current) return;
@@ -78,6 +80,19 @@ function ERPApp() {
     else { dashboardVersion.current++; setDashboard(null); }
     return () => { dashboardVersion.current++; };
   }, [token]);
+  useEffect(() => {
+    let current = true;
+    if (!token) {
+      setPermissions([]);
+      return () => { current = false; };
+    }
+    requestRef.current('permissions')
+      .then((data: { permissions?: unknown }) => {
+        if (current) setPermissions(Array.isArray(data.permissions) ? data.permissions.filter((permission): permission is string => typeof permission === 'string') : []);
+      })
+      .catch(() => { if (current) setPermissions([]); });
+    return () => { current = false; };
+  }, [token, role]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
       if (token && active !== 'Dashboard') { setActive('Dashboard'); return true; }
@@ -268,7 +283,8 @@ function ERPApp() {
           </> : null}
         </>
       ) : (
-        activeConfig && (!activeConfig.readRoles || activeConfig.readRoles.includes(role)) ? <ModuleWorkspace key={`${session?.user.id}-${active}`} config={activeConfig} role={role} userId={session!.user.id} currency={session!.company.currency} request={request} onChanged={() => void refreshDashboard()} /> : <LoadingState label="Abriendo dashboard…" />
+        active === 'Reportes' && permissions.includes('reports.view') ? <ReportsWorkspace key={`${session?.user.id}-${active}`} currency={session!.company.currency} companyName={session!.company.name} canExport={permissions.includes('reports.export')} permissions={permissions} request={request} /> :
+          activeConfig && active !== 'Reportes' && (!activeConfig.readRoles || activeConfig.readRoles.includes(role)) ? <ModuleWorkspace key={`${session?.user.id}-${active}`} config={activeConfig} role={role} userId={session!.user.id} currency={session!.company.currency} request={request} onChanged={() => void refreshDashboard()} /> : <LoadingState label="Abriendo dashboard…" />
       )}
     </AppShell>
   );

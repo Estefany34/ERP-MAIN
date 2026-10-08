@@ -18,7 +18,8 @@ export async function fetchJson(path: string, init: RequestInit = {}) {
   try {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
-    const response = await fetch(`${API}/${path.replace(/^\//, '')}`, { ...init, headers, signal: controller.signal });
+    const requestUrl = `${API}/${path.replace(/^\//, '')}`;
+    const response = await fetch(requestUrl, { ...init, headers, signal: controller.signal });
     const text = await response.text();
     let data: any = {};
     if (text) {
@@ -26,8 +27,16 @@ export async function fetchJson(path: string, init: RequestInit = {}) {
         data = JSON.parse(text);
       } catch {
         const contentType = response.headers.get('content-type') ?? '';
-        const preview = text.replace(/\s+/g, ' ').trim().slice(0, 120);
-        throw new Error(`El servidor devolvió una respuesta inesperada (HTTP ${response.status}${contentType ? `, ${contentType}` : ''})${preview ? `: ${preview}` : ''}`);
+        if (__DEV__) console.error('[api] Non-JSON response', {
+          method: init.method ?? 'GET',
+          url: requestUrl,
+          status: response.status,
+          contentType,
+          response: text.slice(0, 500),
+        });
+        throw new Error(response.status === 404
+          ? 'El servidor no tiene disponible esta función (HTTP 404).'
+          : `El servidor devolvió una respuesta no válida (HTTP ${response.status}).`);
       }
     }
     return { response, data };

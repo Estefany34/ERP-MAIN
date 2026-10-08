@@ -2,13 +2,35 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db, id, now, toPublicUser, type Role } from './store.js';
 import { type AuthRequest } from './auth.js';
-import { requirePermission, rolePermissions } from './permissions.js';
+import { hasPermission, requirePermission, rolePermissions, type Permission } from './permissions.js';
 import { parseBody } from './http.js';
+import { buildReport, buildReportSummary, parseReportFilters, parseReportType, reportAuditMetadata, reportExportSchema, reportOptions, type ReportType } from './reporting.js';
 
 export const adminRouter = Router();
-const dateSchema = z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional();
-const filtersSchema = z.object({ from: dateSchema, to: dateSchema, status: z.string().trim().max(40).optional(), userId: z.string().uuid().optional() });
-const within = (date: string, from?: string, to?: string) => (!from || date >= from) && (!to || date <= `${to}${to.length === 10 ? 'T23:59:59.999Z' : ''}`);
+const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+});
+const dateSchema = z.string().datetime({ offset: true }).or(dateOnlySchema).optional();
+const filtersSchema = z.object({ from: dateSchema, to: dateSchema, status: z.string().trim().max(40).optional(), userId: z.string().uuid().optional() }).superRefine((filters, context) => {
+  const from = filters.from ? Date.parse(filters.from.length === 10 ? `${filters.from}T00:00:00.000Z` : filters.from) : undefined;
+  const to = filters.to ? Date.parse(filters.to.length === 10 ? `${filters.to}T23:59:59.999Z` : filters.to) : undefined;
+  if (from !== undefined && to !== undefined && from > to) context.addIssue({ code: z.ZodIssueCode.custom, path: ['from'], message: 'La fecha inicial no puede ser posterior a la fecha final.' });
+});
+const within = (date: string, from?: string, to?: string) => {
+  const instant = Date.parse(date);
+  const start = from ? Date.parse(from.length === 10 ? `${from}T00:00:00.000Z` : from) : undefined;
+  const end = to ? Date.parse(to.length === 10 ? `${to}T23:59:59.999Z` : to) : undefined;
+  return Number.isFinite(instant) && (start === undefined || instant >= start) && (end === undefined || instant <= end);
+};
+const reportViewPermissions = {
+  sales: ['sales.view'],
+  purchases: ['purchases.view'],
+  inventory: ['inventory.view'],
+  finance: ['finance.view'],
+  customers: ['customers.view'],
+  executive: ['sales.view', 'purchases.view', 'finance.view', 'inventory.view', 'customers.view'],
+} satisfies Record<ReportType, Permission[]>;
 
 function recordAudit(req: AuthRequest, action: string, entity: string, entityId: string, metadata?: Record<string, string | number | boolean>) {
   db.audits.push({ id: id(), companyId: req.user!.companyId, userId: req.user!.id, role: req.user!.role, action, module: entity === 'report' ? 'reports' : 'administration', entity, entityId, result: 'success', ip: req.ip, metadata, createdAt: now() });
@@ -40,18 +62,10 @@ adminRouter.get('/audit-logs', requirePermission('audit.view'), (req: AuthReques
 });
 
 adminRouter.get('/reports/summary', requirePermission('reports.view'), (req: AuthRequest, res) => {
+  const required = ['sales.view', 'purchases.view', 'finance.view', 'inventory.view', 'customers.view'] as const;
+  if (!required.every(permission => hasPermission(req.user!.role, permission))) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
   const input = filtersSchema.parse(req.query); const companyId = req.user!.companyId;
-  const sales = db.sales.filter(x => x.companyId === companyId && within(x.createdAt, input.from, input.to));
-  const purchases = db.purchases.filter(x => x.companyId === companyId && within(x.createdAt, input.from, input.to) && (!input.status || x.status === input.status));
-  const transactions = db.financialTransactions.filter(x => x.companyId === companyId && within(x.createdAt, input.from, input.to) && (!input.status || x.status === input.status));
-  const products = db.products.filter(x => x.companyId === companyId);
-  const stock = products.map(product => ({ id: product.id, name: product.name, stock: db.movements.filter(m => m.companyId === companyId && m.productId === product.id).reduce((sum,m) => sum + (m.type === 'out' ? -m.quantity : m.quantity), 0), minimum: product.stockMinimum }));
-  res.json({
-    period: { from: input.from ?? null, to: input.to ?? null },
-    kpis: { customers: db.customers.filter(x => x.companyId === companyId).length, salesCount: sales.length, salesTotal: sales.reduce((s,x) => s + x.total, 0), purchasesCount: purchases.length, purchasesTotal: purchases.reduce((s,x) => s + x.total, 0), income: transactions.filter(x => x.type === 'income').reduce((s,x) => s + x.amount, 0), expenses: transactions.filter(x => x.type === 'expense').reduce((s,x) => s + x.amount, 0), lowStock: stock.filter(x => x.stock <= x.minimum).length },
-    recent: { sales: sales.slice(-10).reverse(), purchases: purchases.slice(-10).reverse(), transactions: transactions.slice(-10).reverse() },
-    inventory: { lowStock: stock.filter(x => x.stock <= x.minimum) }
-  });
+  res.json(buildReportSummary(companyId, input));
 });
 
 adminRouter.get('/reports/export.csv', requirePermission('reports.export'), (req: AuthRequest, res) => {
@@ -60,4 +74,29 @@ adminRouter.get('/reports/export.csv', requirePermission('reports.export'), (req
   const csv = ['id,createdAt,customerId,total,status', ...rows.map(row => [row.id,row.createdAt,row.customerId,row.total,row.status].map(value => `"${String(value).replaceAll('"','""')}"`).join(','))].join('\n');
   recordAudit(req, 'report.export', 'report', 'sales', { format: 'csv', rows: rows.length });
   res.type('text/csv').attachment('fanix-sales-report.csv').send(csv);
+});
+
+adminRouter.get('/reports/options', requirePermission('reports.view'), (req: AuthRequest, res) => {
+  const options = reportOptions(req.user!.companyId);
+  res.json({
+    ...options,
+    customers: hasPermission(req.user!.role, 'customers.view') ? options.customers : [],
+    suppliers: hasPermission(req.user!.role, 'purchases.view') ? options.suppliers : [],
+  });
+});
+
+adminRouter.get('/reports/:type', requirePermission('reports.view'), (req: AuthRequest, res) => {
+  const type = parseReportType(req.params.type);
+  const required = reportViewPermissions[type];
+  if (!required.every(permission => hasPermission(req.user!.role, permission))) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
+  const filters = parseReportFilters(type, req.query);
+  res.json(buildReport(req.user!.companyId, type, filters));
+});
+
+adminRouter.post('/reports/export-audit', requirePermission('reports.export'), (req: AuthRequest, res) => {
+  const input = parseBody(reportExportSchema, req.body);
+  const filters = parseReportFilters(input.type, input.filters);
+  const report = buildReport(req.user!.companyId, input.type, filters);
+  recordAudit(req, 'report.export', 'report', input.type, reportAuditMetadata(input.type, input.format, filters, report.rows.length));
+  res.status(201).json({ recorded: true, rows: report.rows.length });
 });

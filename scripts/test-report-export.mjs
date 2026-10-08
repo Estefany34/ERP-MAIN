@@ -27,6 +27,9 @@ try {
     prepareSalesReport,
     salesReportFilename,
     salesReportTotal,
+    createReportExcel,
+    createReportPdf,
+    downloadReportFile,
   } = require(bundle);
   const XLSX = require('@e965/xlsx');
   const generatedAt = new Date('2026-10-08T12:30:00.000Z');
@@ -94,6 +97,74 @@ try {
   assert.equal(formulaValues[1], "'=1+1");
   assert.throws(() => downloadSalesReportPdf(one, 'MXN'), /disponible en la versión web/);
 
+  const genericRows = records.map(record => ({
+    id: record.id,
+    customer: record.customer,
+    total: record.total,
+    status: record.status,
+    date: record.date,
+  }));
+  const genericInput = {
+    type: 'sales',
+    title: 'Reporte de ventas',
+    companyName: 'Fanix Global',
+    currency: 'MXN',
+    filtersLabel: 'Alcance: Todos los registros disponibles',
+    generatedAt,
+    columns: [
+      { key: 'id', label: 'ID', format: 'text' },
+      { key: 'customer', label: 'Cliente', format: 'text' },
+      { key: 'total', label: 'Total', format: 'currency' },
+      { key: 'status', label: 'Estado', format: 'text' },
+      { key: 'date', label: 'Fecha', format: 'date' },
+    ],
+    kpis: [{ key: 'salesTotal', label: 'Total vendido', value: 720.25, format: 'currency' }],
+    rows: genericRows,
+  };
+  const genericPdf = createReportPdf(genericInput);
+  const genericPdfText = new TextDecoder().decode(new Uint8Array(await genericPdf.arrayBuffer()));
+  assert.ok(genericPdfText.startsWith('%PDF-') && genericPdfText.includes('FANIX GLOBAL'));
+  assert.ok(genericPdfText.includes('Fecha de generación') || genericPdfText.includes('Generado:'));
+  assert.ok(!genericPdfText.includes('Periodo:') && !genericPdfText.includes('undefined'));
+  for (const row of genericRows) assert.ok(genericPdfText.includes(row.id), `Generic PDF contains ${row.id}`);
+  const genericExcel = createReportExcel(genericInput);
+  const genericExcelBytes = new Uint8Array(genericExcel);
+  assert.ok(genericExcelBytes[0] === 0x50 && genericExcelBytes[1] === 0x4b);
+  const genericWorkbook = XLSX.read(genericExcel, { type: 'array', cellDates: true, cellNF: true });
+  assert.deepEqual(genericWorkbook.SheetNames, ['Resumen', 'Detalle']);
+  const genericDetail = XLSX.utils.sheet_to_json(genericWorkbook.Sheets.Detalle, { header: 1, raw: true });
+  assert.deepEqual(genericDetail.slice(1).map(row => row[0]), genericRows.map(row => row.id));
+  assert.equal(genericDetail[1][2], genericRows[0].total);
+  assert.ok(genericWorkbook.Sheets.Detalle['C2'].z.includes('MXN'));
+  assert.ok(genericDetail[1][4] instanceof Date);
+  const genericSummary = XLSX.utils.sheet_to_json(genericWorkbook.Sheets.Resumen, { header: 1, raw: true });
+  assert.equal(genericSummary.find(row => row[0] === 'Total vendido')[1], 720.25);
+  assert.ok(genericWorkbook.Sheets.Resumen['B9'].z.includes('MXN'));
+  assert.equal(genericSummary.some(row => row[0] === 'Periodo'), false, 'Generic report summary does not expose an unselected period');
+  const unsafeWorkbook = XLSX.read(createReportExcel({
+    ...genericInput,
+    companyName: '=HYPERLINK("https://example.test")',
+    rows: [{ ...genericRows[0], id: '=1+1', customer: '=2+2' }],
+  }), { type: 'array' });
+  const unsafeDetail = XLSX.utils.sheet_to_json(unsafeWorkbook.Sheets.Detalle, { header: 1, raw: true });
+  assert.equal(unsafeDetail[1][0], "'=1+1");
+  assert.equal(unsafeDetail[1][1], "'=2+2");
+  assert.equal(XLSX.utils.sheet_to_json(unsafeWorkbook.Sheets.Resumen, { header: 1, raw: true })[2][1], "'=HYPERLINK(\"https://example.test\")");
+
+  const executiveInput = {
+    ...genericInput,
+    type: 'executive',
+    title: 'Reporte ejecutivo',
+    columns: [{ key: 'metric', label: 'Indicador' }, { key: 'value', label: 'Valor', format: 'number' }],
+    kpis: [{ key: 'balance', label: 'Balance', value: 65, format: 'currency' }],
+    rows: [{ metric: 'Balance', value: 65, format: 'currency' }],
+  };
+  const executiveWorkbook = XLSX.read(createReportExcel(executiveInput), { type: 'array', cellNF: true });
+  assert.equal(executiveWorkbook.Sheets.Detalle['B2'].v, 65);
+  assert.ok(executiveWorkbook.Sheets.Detalle['B2'].z.includes('MXN'), 'Executive currency values stay numeric and use the company currency format');
+  const emptyGenericWorkbook = XLSX.read(createReportExcel({ ...genericInput, rows: [] }), { type: 'array' });
+  assert.deepEqual(XLSX.utils.sheet_to_json(emptyGenericWorkbook.Sheets.Detalle, { header: 1, raw: true }), [['ID', 'Cliente', 'Total', 'Estado', 'Fecha']]);
+
   const originalDocument = globalThis.document;
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -113,11 +184,19 @@ try {
   try {
     downloadSalesReportPdf(one, 'MXN');
     downloadSalesReportExcel(one, 'MXN');
+    downloadReportFile(createReportPdf({ ...genericInput, rows: genericRows.slice(0, 1) }), 'sales', 'pdf', generatedAt);
+    downloadReportFile(new Blob([createReportExcel({ ...genericInput, rows: genericRows.slice(0, 1) })]), 'sales', 'xlsx', generatedAt);
     assert.match(downloads[0].filename, /\.pdf$/);
     assert.match(downloads[1].filename, /\.xlsx$/);
     assert.ok(new TextDecoder().decode(await downloads[0].blob.arrayBuffer()).startsWith('%PDF-'));
     const downloadedWorkbook = XLSX.read(await downloads[1].blob.arrayBuffer(), { type: 'array' });
     assert.deepEqual(downloadedWorkbook.SheetNames, ['Ventas']);
+    assert.match(downloads[2].filename, /\.pdf$/);
+    assert.match(downloads[3].filename, /\.xlsx$/);
+    assert.ok(new TextDecoder().decode(await downloads[2].blob.arrayBuffer()).startsWith('%PDF-'));
+    assert.deepEqual(XLSX.read(await downloads[3].blob.arrayBuffer(), { type: 'array' }).SheetNames, ['Resumen', 'Detalle']);
+    assert.equal(downloads[2].filename, 'reporte-ventas-fanix-2026-10-08.pdf');
+    assert.equal(downloads[3].filename, 'reporte-ventas-fanix-2026-10-08.xlsx');
   } finally {
     if (originalDocument === undefined) delete globalThis.document;
     else globalThis.document = originalDocument;
@@ -125,7 +204,7 @@ try {
     URL.revokeObjectURL = originalRevokeObjectURL;
   }
 
-  console.log('PASS: zero/one/multiple sales, long customer names, normalized dates/statuses, totals, multipage PDF, numeric/date XLSX cells, matching record IDs, formula-safe text and actual .pdf/.xlsx downloads.');
+  console.log('PASS: zero/one/multiple sales, long customer names, normalized dates/statuses, totals, multipage PDF, generic report parity, executive currency, numeric/date XLSX cells, formula-safe text and actual .pdf/.xlsx downloads.');
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }
