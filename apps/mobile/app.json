@@ -2,10 +2,11 @@
   "expo": {
     "name": "Fanix Global",
     "slug": "fanix-global",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "android": {
-      "package": "com.fanixglobal.erp"
+      "package": "com.fanixglobal.erp",
+      "versionCode": 2
     }
   }
 }
