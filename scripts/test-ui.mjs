@@ -190,7 +190,7 @@ try {
     await chooseOption('Tipo de reporte: Ventas', 'Compras');
     const reportFilterLabelsFor = () => renderer.root.findAll(node => node.type === 'Pressable')
       .map(node => node.props.accessibilityLabel)
-      .filter(label => typeof label === 'string' && /^(Tipo de reporte|Estado|Cliente|Proveedor|Movimiento):/.test(label));
+      .filter(label => typeof label === 'string' && /^(Tipo de reporte|Tipo de movimiento|Estado|Cliente|Proveedor|Movimiento):/.test(label));
     let reportFilterLabels = reportFilterLabelsFor();
     assert.ok(reportFilterLabels.includes('Proveedor: Todos') && !reportFilterLabels.includes('Cliente: Todos'), 'Purchases show supplier filters only');
     await press('Generar reporte');
@@ -201,8 +201,26 @@ try {
     reportFilterLabels = reportFilterLabelsFor();
     assert.ok(reportFilterLabels.includes('Movimiento: Todos') && !reportFilterLabels.includes('Cliente: Todos') && !reportFilterLabels.includes('Proveedor: Todos'), 'Inventory shows movement filters only');
     assert.equal(renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Buscar producto en reportes').length, 1);
+    await press('Generar reporte');
+    await until(() => content().includes('Productos registrados') && content().includes('Reporte generado correctamente.'), 'Inventory report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/inventory`), 'Inventory endpoint uses the mounted path and omits date parameters');
 
-    await chooseOption('Tipo de reporte: Inventario', 'Ejecutivo / General');
+    await chooseOption('Tipo de reporte: Inventario', 'Finanzas');
+    reportFilterLabels = reportFilterLabelsFor();
+    assert.ok(reportFilterLabels.includes('Tipo de movimiento: Todos') && reportFilterLabels.includes('Estado: Todos'), 'Finance exposes its real transaction and status filters');
+    await press('Generar reporte');
+    await until(() => content().includes('Ingresos') && content().includes('Reporte generado correctamente.'), 'Finance report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/finance`), 'Finance endpoint uses the mounted path and omits date parameters');
+
+    await chooseOption('Tipo de reporte: Finanzas', 'Clientes');
+    reportFilterLabels = reportFilterLabelsFor();
+    assert.deepEqual(reportFilterLabels, ['Tipo de reporte: Clientes'], 'Customer search is an input rather than an irrelevant selector');
+    assert.equal(renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Buscar cliente en reportes').length, 1);
+    await press('Generar reporte');
+    await until(() => content().includes('Clientes registrados') && content().includes('Reporte generado correctamente.'), 'Customers report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/customers`), 'Customers endpoint uses the mounted path and omits date parameters');
+
+    await chooseOption('Tipo de reporte: Clientes', 'Ejecutivo / General');
     reportFilterLabels = reportFilterLabelsFor();
     assert.deepEqual(reportFilterLabels, ['Tipo de reporte: Ejecutivo / General'], 'Executive report has no irrelevant filter controls');
     await press('Generar reporte');

@@ -87,8 +87,9 @@ test('report types filter company data, enforce report permissions, calculate KP
     assert.deepEqual(inventoryOptionData.suppliers.map(item => item.id), [supplierId]);
 
     const salesResponse = await call(`/reports/sales?customerId=${customerId}&status=confirmed`, ownerToken);
-    const salesReport = await salesResponse.json() as { rows: { id: string; customer: string; items: { name: string }[] }[]; kpis: { key: string; value: number }[] };
+    const salesReport = await salesResponse.json() as { type: string; rows: { id: string; customer: string; items: { name: string }[] }[]; kpis: { key: string; value: number }[] };
     assert.equal(salesResponse.status, 200);
+    assert.equal(salesReport.type, 'sales');
     assert.deepEqual(salesReport.rows.map(row => row.id), [saleId]);
     assert.equal(salesReport.rows[0]?.customer, customer.name);
     assert.equal(salesReport.rows[0]?.items[0]?.name, 'Producto de reporte');
@@ -97,10 +98,15 @@ test('report types filter company data, enforce report permissions, calculate KP
     const crossTenantCustomer = await call(`/reports/sales?customerId=${id()}`, ownerToken);
     assert.equal((await crossTenantCustomer.json() as { rows: unknown[] }).rows.length, 0);
     const purchases = await call(`/reports/purchases?supplierId=${supplierId}&status=received`, ownerToken);
-    assert.deepEqual((await purchases.json() as { rows: { id: string }[] }).rows.map(row => row.id), [purchaseId]);
+    const purchaseReport = await purchases.json() as { type: string; rows: { id: string }[] };
+    assert.equal(purchases.status, 200);
+    assert.equal(purchaseReport.type, 'purchases');
+    assert.deepEqual(purchaseReport.rows.map(row => row.id), [purchaseId]);
 
     const inventory = await call('/reports/inventory?movementType=in&search=Producto%20de%20reporte', ownerToken);
-    const inventoryReport = await inventory.json() as { rows: { stock: number; entries: number; status: string }[]; kpis: { key: string; value: number }[] };
+    const inventoryReport = await inventory.json() as { type: string; rows: { stock: number; entries: number; status: string }[]; kpis: { key: string; value: number }[] };
+    assert.equal(inventory.status, 200);
+    assert.equal(inventoryReport.type, 'inventory');
     assert.equal(inventoryReport.rows.length, 1);
     assert.equal(inventoryReport.rows[0]?.stock, 7);
     assert.equal(inventoryReport.rows[0]?.entries, 10);
@@ -108,12 +114,16 @@ test('report types filter company data, enforce report permissions, calculate KP
     assert.equal(inventoryReport.kpis.find(item => item.key === 'entries')?.value, 10);
 
     const finance = await call('/reports/finance?transactionType=income', ownerToken);
-    const financeReport = await finance.json() as { rows: { type: string }[]; kpis: { key: string; value: number }[] };
+    const financeReport = await finance.json() as { type: string; rows: { type: string }[]; kpis: { key: string; value: number }[] };
+    assert.equal(finance.status, 200);
+    assert.equal(financeReport.type, 'finance');
     assert.deepEqual(financeReport.rows.map(row => row.type), ['Ingreso']);
     assert.equal(financeReport.kpis.find(item => item.key === 'balance')?.value, 100);
 
     const customers = await call('/reports/customers?search=Pedro', ownerToken);
-    const customerReport = await customers.json() as { rows: { customer: string; salesCount: number; salesTotal: number }[] };
+    const customerReport = await customers.json() as { type: string; rows: { customer: string; salesCount: number; salesTotal: number }[] };
+    assert.equal(customers.status, 200);
+    assert.equal(customerReport.type, 'customers');
     assert.equal(customerReport.rows.length, 1);
     assert.deepEqual(customerReport.rows[0], { id: customerId, customer: customer.name, email: customer.email, phone: customer.phone, classification: customer.classification, salesCount: 1, salesTotal: 100 });
 
