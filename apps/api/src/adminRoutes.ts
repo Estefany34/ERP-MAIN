@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db, id, now, toPublicUser, type Role } from './store.js';
 import { type AuthRequest } from './auth.js';
-import { requirePermission, rolePermissions } from './permissions.js';
+import { permissionsForRole, requirePermission } from './permissions.js';
 import { parseBody } from './http.js';
 
 export const adminRouter = Router();
@@ -14,11 +14,11 @@ function recordAudit(req: AuthRequest, action: string, entity: string, entityId:
   db.audits.push({ id: id(), companyId: req.user!.companyId, userId: req.user!.id, role: req.user!.role, action, module: entity === 'report' ? 'reports' : 'administration', entity, entityId, result: 'success', ip: req.ip, metadata, createdAt: now() });
 }
 
-adminRouter.get('/permissions', (req: AuthRequest, res) => res.json({ role: req.user!.role, permissions: rolePermissions[req.user!.role] }));
+adminRouter.get('/permissions', (req: AuthRequest, res) => res.json({ role: req.user!.role, permissions: permissionsForRole(req.user!.role) }));
 
 adminRouter.get('/company/users', requirePermission('users.view'), (req: AuthRequest, res) => {
   const users = db.memberships.filter(m => m.companyId === req.user!.companyId).flatMap(m => {
-    const user = db.users.find(u => u.id === m.userId); return user ? [{ ...toPublicUser(user), role: m.role, permissions: rolePermissions[m.role] }] : [];
+    const user = db.users.find(u => u.id === m.userId); return user ? [{ ...toPublicUser(user), role: m.role, permissions: permissionsForRole(m.role) }] : [];
   });
   res.json(users);
 });
@@ -28,9 +28,23 @@ adminRouter.patch('/company/users/:userId/role', requirePermission('users.manage
   const membership = db.memberships.find(m => m.userId === req.params.userId && m.companyId === req.user!.companyId);
   if (!membership) return res.status(404).json({ error: { code: 'MEMBER_NOT_FOUND', message: 'Company member not found' } });
   if (membership.role === 'owner') return res.status(403).json({ error: { code: 'OWNER_ROLE_PROTECTED', message: 'Owner role cannot be changed here' } });
-  const previousRole = membership.role; membership.role = input.role as Role;
-  recordAudit(req, 'role.change', 'user', membership.userId, { previousRole, nextRole: membership.role });
-  res.json({ userId: membership.userId, role: membership.role, permissions: rolePermissions[membership.role] });
+  const previousRole = membership.role;
+  membership.role = input.role as Role;
+
+  // A role change is a security boundary change. Revoke existing sessions so a
+  // client cannot keep stale UI/session privileges until its next refresh.
+  const revokedAt = now();
+  let revokedSessions = 0;
+  for (const session of db.sessions) {
+    if (session.userId === membership.userId && session.companyId === membership.companyId && !session.revokedAt) {
+      session.revokedAt = revokedAt;
+      session.lastUsedAt = revokedAt;
+      revokedSessions++;
+    }
+  }
+
+  recordAudit(req, 'role.change', 'user', membership.userId, { previousRole, nextRole: membership.role, revokedSessions });
+  res.json({ userId: membership.userId, role: membership.role, permissions: permissionsForRole(membership.role), sessionsRevoked: revokedSessions });
 });
 
 adminRouter.get('/audit-logs', requirePermission('audit.view'), (req: AuthRequest, res) => {
