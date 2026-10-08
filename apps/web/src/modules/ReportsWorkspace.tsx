@@ -15,8 +15,6 @@ import {
 
 type ReportType = 'sales' | 'purchases' | 'inventory' | 'finance' | 'customers' | 'executive';
 type ReportFilters = {
-  from?: string;
-  to?: string;
   status?: string;
   customerId?: string;
   supplierId?: string;
@@ -30,7 +28,6 @@ type ReportData = {
   type: ReportType;
   title: string;
   company: { name: string; currency: string };
-  period: { from: string | null; to: string | null };
   filters: ReportFilters;
   columns: ReportColumn[];
   kpis: ReportKpi[];
@@ -67,6 +64,10 @@ const financeTypes: Choice[] = [
 const movementTypes: Choice[] = [
   { label: 'Todos', value: '' }, { label: 'Entradas', value: 'in' }, { label: 'Salidas', value: 'out' },
 ];
+const statusLabels: Record<string, string> = {
+  confirmed: 'Confirmada', draft: 'Borrador', approved: 'Aprobada',
+  received: 'Recibida', rejected: 'Rechazada', pending: 'Pendiente', paid: 'Pagado',
+};
 const reportPermissions: Record<ReportType, string[]> = {
   sales: ['sales.view'],
   purchases: ['purchases.view'],
@@ -90,12 +91,6 @@ function isColumnFormat(value: unknown): value is ReportColumn['format'] {
 
 function isKpiFormat(value: unknown): value is ReportKpi['format'] {
   return value === undefined || value === 'currency' || value === 'number';
-}
-
-function nullableString(value: unknown): string | null {
-  if (value === null) return null;
-  if (typeof value === 'string') return value;
-  throw new Error('El servidor devolvió metadatos de reporte inválidos.');
 }
 
 function parseReportOptions(value: unknown): ReportOptions {
@@ -122,14 +117,12 @@ function parseReportOptions(value: unknown): ReportOptions {
 }
 
 function parseReportData(value: unknown): ReportData {
-  if (!isRecord(value) || !isReportType(value.type) || typeof value.title !== 'string' || !isRecord(value.company) || !isRecord(value.period) || !isRecord(value.filters) ||
+  if (!isRecord(value) || !isReportType(value.type) || typeof value.title !== 'string' || !isRecord(value.company) || !isRecord(value.filters) ||
     !Array.isArray(value.columns) || !Array.isArray(value.kpis) || !Array.isArray(value.rows)) throw new Error('El servidor devolvió un reporte incompleto.');
   const type = value.type;
   const title = value.title;
   const companyName = value.company.name;
   const currency = value.company.currency;
-  const periodFrom = nullableString(value.period.from);
-  const periodTo = nullableString(value.period.to);
   if (typeof companyName !== 'string' || typeof currency !== 'string') throw new Error('El servidor devolvió metadatos de reporte inválidos.');
   const columns: ReportColumn[] = [];
   for (const column of value.columns) {
@@ -151,7 +144,7 @@ function parseReportData(value: unknown): ReportData {
   }
   const rawFilters = value.filters;
   const filters: ReportFilters = {};
-  for (const key of ['from', 'to', 'status', 'customerId', 'supplierId', 'search'] as const) {
+  for (const key of ['status', 'customerId', 'supplierId', 'search'] as const) {
     const filter = rawFilters[key];
     if (filter !== undefined) {
       if (typeof filter !== 'string') throw new Error('El servidor devolvió filtros de reporte inválidos.');
@@ -172,24 +165,11 @@ function parseReportData(value: unknown): ReportData {
     type,
     title,
     company: { name: companyName, currency },
-    period: { from: periodFrom, to: periodTo },
     filters,
     columns,
     kpis,
     rows,
   };
-}
-
-function isValidDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
-function dateLabel(value: string | null): string {
-  if (!value) return 'Sin límite';
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
 }
 
 function formatValue(value: unknown, format: ReportColumn['format'], currency: string): string | number | null {
@@ -225,16 +205,24 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
   const [error, setError] = useState('');
+  const [optionsError, setOptionsError] = useState(false);
   const [success, setSuccess] = useState('');
   const exportingLock = useRef(false);
-  const [validationError, setValidationError] = useState('');
+  const generatingLock = useRef(false);
 
   useEffect(() => {
     let current = true;
     setOptionsLoading(true);
     request('reports/options')
       .then(data => { if (current) setOptions(parseReportOptions(data)); })
-      .catch((err: unknown) => { if (current) setError(err instanceof Error ? err.message : 'No se pudieron cargar los filtros del reporte.'); })
+      .catch((err: unknown) => {
+        if (!current) return;
+        setOptionsError(true);
+        const unavailable = err instanceof Error && err.message.includes('no tiene disponible esta función');
+        setError(unavailable
+          ? 'No se pudo cargar el módulo de Reportes. El servidor no tiene disponible esta función.'
+          : 'No se pudieron cargar las opciones de Reportes.');
+      })
       .finally(() => { if (current) setOptionsLoading(false); });
     return () => { current = false; };
   }, []);
@@ -242,31 +230,23 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
   const setFilter = (key: keyof ReportFilters, value: string) => {
     setFilters(previous => ({ ...previous, [key]: value || undefined }));
     setReport(null);
+    setError('');
     setSuccess('');
-    setValidationError('');
   };
 
   function selectReport(type: string) {
     const selected = availableReportTypes.find(item => item.value === type);
     if (!selected) return;
     setReportType(selected.value);
-    setFilters(previous => ({ from: previous.from, to: previous.to }));
+    setFilters({});
     setReport(null);
     setError('');
     setSuccess('');
-    setValidationError('');
-  }
-
-  function validateFilters(): boolean {
-    if (filters.from && !isValidDate(filters.from)) { setValidationError('La fecha inicial no es válida. Usa el formato AAAA-MM-DD.'); return false; }
-    if (filters.to && !isValidDate(filters.to)) { setValidationError('La fecha final no es válida. Usa el formato AAAA-MM-DD.'); return false; }
-    if (filters.from && filters.to && filters.from > filters.to) { setValidationError('La fecha inicial no puede ser posterior a la fecha final.'); return false; }
-    setValidationError('');
-    return true;
   }
 
   async function generateReport() {
-    if (generating || exporting || optionsLoading || !validateFilters()) return;
+    if (generatingLock.current || exporting || optionsLoading || optionsError) return;
+    generatingLock.current = true;
     setGenerating(true);
     setReport(null);
     setError('');
@@ -280,21 +260,25 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
       setReport(result);
       setSuccess('Reporte generado correctamente.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo generar el reporte. Intenta de nuevo.');
+      const unavailable = err instanceof Error && err.message.includes('no tiene disponible esta función');
+      setError(unavailable
+        ? 'No se pudo cargar el módulo de Reportes. El servidor no tiene disponible esta función.'
+        : 'No se pudo generar el reporte. Verifica tu conexión e inténtalo de nuevo.');
     } finally {
+      generatingLock.current = false;
       setGenerating(false);
     }
   }
 
   function filterDescription(data: ReportData): string {
-    const parts = [`Periodo: ${dateLabel(data.period.from)} - ${dateLabel(data.period.to)}`];
-    if (data.filters.status) parts.push(`Estado: ${data.filters.status}`);
-    if (data.filters.transactionType) parts.push(`Movimiento: ${data.filters.transactionType === 'income' ? 'Ingreso' : 'Egreso'}`);
+    const parts: string[] = [];
+    if (data.filters.status) parts.push(`Estado: ${statusLabels[data.filters.status] ?? data.filters.status}`);
+    if (data.filters.transactionType) parts.push(`Tipo: ${data.filters.transactionType === 'income' ? 'Ingreso' : 'Egreso'}`);
     if (data.filters.movementType) parts.push(`Movimiento: ${data.filters.movementType === 'in' ? 'Entrada' : 'Salida'}`);
     if (data.filters.customerId) parts.push(`Cliente: ${options?.customers.find(customer => customer.id === data.filters.customerId)?.name ?? 'Seleccionado'}`);
     if (data.filters.supplierId) parts.push(`Proveedor: ${options?.suppliers.find(supplier => supplier.id === data.filters.supplierId)?.name ?? 'Seleccionado'}`);
-    if (data.filters.search) parts.push(`Búsqueda: ${data.filters.search}`);
-    return parts.join(' · ');
+    if (data.filters.search) parts.push(`${data.type === 'inventory' ? 'Producto' : 'Búsqueda'}: ${data.filters.search}`);
+    return parts.length ? parts.join(' · ') : 'Alcance: Todos los registros disponibles';
   }
 
   async function exportReport(format: 'pdf' | 'xlsx') {
@@ -310,7 +294,6 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
         title: report.title,
         companyName: options?.company.name ?? companyName,
         currency: report.company.currency || options?.company.currency || currency,
-        period: report.period,
         filtersLabel: filterDescription(report),
         generatedAt,
         columns: report.columns,
@@ -321,11 +304,13 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
         [createReportExcel(exportInput)],
         { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
       );
-      const audit = await request('reports/export-audit', {
+      const auditResponse = await request('reports/export-audit', {
         method: 'POST',
         body: JSON.stringify({ type: report.type, format, filters: report.filters }),
-      }) as { recorded?: boolean; rows?: number };
-      if (!audit.recorded || audit.rows !== report.rows.length) throw new Error('El reporte cambió antes de exportarse. Genéralo de nuevo para mantener la auditoría consistente.');
+      });
+      if (!isRecord(auditResponse) || auditResponse.recorded !== true || auditResponse.rows !== report.rows.length) {
+        throw new Error('El reporte cambió antes de exportarse. Genéralo de nuevo para mantener la auditoría consistente.');
+      }
       downloadReportFile(file, report.type, format, generatedAt);
       setSuccess(`Reporte ${format === 'pdf' ? 'PDF' : 'Excel'} generado correctamente.`);
     } catch (err) {
@@ -361,31 +346,28 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <SelectField label="Tipo de reporte" value={reportType} choices={availableReportTypes} onChange={selectReport} disabled={isBusy} />
-        <DateField label="Desde" value={filters.from ?? ''} onChange={value => setFilter('from', value)} disabled={isBusy} />
-        <DateField label="Hasta" value={filters.to ?? ''} onChange={value => setFilter('to', value)} disabled={isBusy} />
         {statusChoices ? <SelectField label="Estado" value={filters.status ?? ''} choices={statusChoices} onChange={value => setFilter('status', value)} disabled={isBusy} /> : null}
         {reportType === 'sales' ? <SelectField label="Cliente" value={filters.customerId ?? ''} choices={[{ label: 'Todos', value: '' }, ...(options?.customers ?? []).map(customer => ({ label: customer.name, value: customer.id }))]} onChange={value => setFilter('customerId', value)} disabled={isBusy || optionsLoading} /> : null}
         {reportType === 'purchases' ? <SelectField label="Proveedor" value={filters.supplierId ?? ''} choices={[{ label: 'Todos', value: '' }, ...(options?.suppliers ?? []).map(supplier => ({ label: supplier.name, value: supplier.id }))]} onChange={value => setFilter('supplierId', value)} disabled={isBusy || optionsLoading} /> : null}
         {reportType === 'finance' ? <SelectField label="Tipo de movimiento" value={filters.transactionType ?? ''} choices={financeTypes} onChange={value => setFilter('transactionType', value)} disabled={isBusy} /> : null}
         {reportType === 'inventory' ? <SelectField label="Movimiento" value={filters.movementType ?? ''} choices={movementTypes} onChange={value => setFilter('movementType', value)} disabled={isBusy} /> : null}
-        {reportType === 'customers' ? <View style={{ flex: 1, minWidth: 180, gap: 5 }}>
-          <Text style={{ color: theme.colors.textSecondary }}>Buscar cliente</Text>
-          <TextInput accessibilityLabel="Buscar cliente en reportes" value={filters.search ?? ''} onChangeText={value => setFilter('search', value)} editable={!isBusy} placeholder="Nombre o correo" placeholderTextColor={theme.colors.inputPlaceholder}
+        {reportType === 'inventory' || reportType === 'customers' ? <View style={{ flex: 1, minWidth: 180, gap: 5 }}>
+          <Text style={{ color: theme.colors.textSecondary }}>{reportType === 'inventory' ? 'Buscar producto' : 'Buscar cliente'}</Text>
+          <TextInput accessibilityLabel={reportType === 'inventory' ? 'Buscar producto en reportes' : 'Buscar cliente en reportes'} value={filters.search ?? ''} onChangeText={value => setFilter('search', value)} editable={!isBusy} placeholder={reportType === 'inventory' ? 'Nombre o SKU' : 'Nombre o correo'} placeholderTextColor={theme.colors.inputPlaceholder}
             style={{ color: theme.colors.textPrimary, backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, borderWidth: 1, borderRadius: 8, minHeight: 44, paddingHorizontal: 12 }} />
         </View> : null}
       </View>
 
       {optionsLoading ? <LoadingState label="Cargando filtros…" /> : null}
-      {validationError ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{validationError}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{error}</Text> : null}
       {success ? <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.success }}>{success}</Text> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {button(generating ? 'Generando reporte…' : 'Generar reporte', () => void generateReport(), isBusy || optionsLoading)}
+        {button(generating ? 'Generando reporte…' : 'Generar reporte', () => void generateReport(), isBusy || optionsLoading || optionsError)}
       </View>
       {canExport
         ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {button(exporting === 'pdf' ? 'Generando PDF…' : 'Exportar PDF', () => void exportReport('pdf'), isBusy || optionsLoading || Boolean(error) || !report?.rows.length)}
-          {button(exporting === 'xlsx' ? 'Generando Excel…' : 'Exportar Excel', () => void exportReport('xlsx'), isBusy || optionsLoading || Boolean(error) || !report?.rows.length)}
+          {button(exporting === 'pdf' ? 'Generando PDF…' : 'Exportar PDF', () => void exportReport('pdf'), isBusy || optionsLoading || optionsError || Boolean(error) || !report?.rows.length)}
+          {button(exporting === 'xlsx' ? 'Generando Excel…' : 'Exportar Excel', () => void exportReport('xlsx'), isBusy || optionsLoading || optionsError || Boolean(error) || !report?.rows.length)}
         </View>
         : <Text style={{ color: theme.colors.textSecondary }}>Tu rol puede consultar reportes, pero no tiene permiso para exportarlos.</Text>}
 
@@ -409,20 +391,11 @@ export function ReportsWorkspace({ currency, companyName, canExport, permissions
           <Text style={{ color: theme.colors.textSecondary }}>{label} · {report.rows.length} registros</Text>
           {report.rows.length
             ? <DataTable rows={viewRows} columns={report.columns} />
-            : <EmptyState title="Sin registros para estos filtros" description="Ajusta el periodo o los filtros y genera el reporte de nuevo." />}
+            : <EmptyState title="Sin registros para estos filtros" description="Ajusta los filtros y genera el reporte de nuevo." />}
         </View>
       </> : null}
     </Card>
   );
-}
-
-function DateField({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
-  const { theme } = useFanixTheme();
-  return <View style={{ flex: 1, minWidth: 150, gap: 5 }}>
-    <Text style={{ color: theme.colors.textSecondary }}>{label}</Text>
-    <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} editable={!disabled} placeholder="AAAA-MM-DD" placeholderTextColor={theme.colors.inputPlaceholder}
-      style={{ color: theme.colors.textPrimary, backgroundColor: theme.colors.inputBackground, borderColor: theme.colors.inputBorder, borderWidth: 1, borderRadius: 8, minHeight: 44, paddingHorizontal: 12 }} />
-  </View>;
 }
 
 function SelectField({ label, value, choices, onChange, disabled }: { label: string; value: string; choices: Choice[]; onChange: (value: string) => void; disabled: boolean }) {

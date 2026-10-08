@@ -45,6 +45,7 @@ try {
   async function press(label) { const found = buttons(label); assert.equal(found.length, 1, `One button: ${label}`); assert.ok(!found[0].props.disabled, `${label} is enabled`); await act(async () => { await found[0].props.onPress(); }); }
   async function fill(label, value) { const input = renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === label); assert.equal(input.length, 1, `One field: ${label}`); await act(async () => input[0].props.onChangeText(value)); }
   async function choose(label, value) { const choice = renderer.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityLabel === label); assert.equal(choice.length, 1, `One selector: ${label}`); await act(async () => choice[0].props.onPress()); await press(value); }
+  async function chooseOption(label, value) { const choice = renderer.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityLabel === label); assert.equal(choice.length, 1, `One selector: ${label}`); await act(async () => choice[0].props.onPress()); const options = renderer.root.findAll(node => node.type === 'Pressable' && text(node) === value); assert.ok(options.length, `Visible option: ${value}`); await act(async () => options.at(-1).props.onPress()); }
   async function until(predicate, label) { for (let attempt = 0; attempt < 150; attempt++) { if (predicate()) return; await act(async () => { await delay(20); }); } assert.fail(`Timed out: ${label}\n${content()}`); }
   await act(async () => { renderer = create(React.createElement(App)); });
   await until(() => buttons('Iniciar sesión').length, 'Landing page');
@@ -55,7 +56,12 @@ try {
   await press('Iniciar sesión'); await until(() => content().includes('Empresa demo'), 'Login/dashboard');
   assert.ok(content().includes('Administrador · Propietario'));
   await press('Clientes'); await until(() => buttons('Nuevo registro').length && !buttons('Actualizar')[0].props.disabled, 'Customers loaded');
-  const actualFetch = globalThis.fetch;
+  const networkFetch = globalThis.fetch;
+  const reportRequests = [];
+  const actualFetch = async (url, init) => {
+    if (String(url).includes('/reports/')) reportRequests.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body });
+    return networkFetch(url, init);
+  };
   let expiredOnce = true;
   let refreshCount = 0;
   globalThis.fetch = async (url, init) => {
@@ -114,17 +120,20 @@ try {
   const reportDownloads = [];
   try {
     await press('Reportes'); await until(() => buttons('Generar reporte').length && !buttons('Generar reporte')[0].props.disabled, 'Report filters loaded');
+    assert.ok(!renderer.root.findAll(node => node.type === 'TextInput' && ['Desde', 'Hasta'].includes(node.props.accessibilityLabel)).length, 'Report date range inputs are absent');
+    assert.deepEqual(reportRequests.filter(item => item.url.includes('/reports/')), [{ url: `${api}/reports/options`, method: 'GET', body: undefined }], 'Entering reports only loads options and uses the mounted API path');
     assert.equal(buttons('Exportar Excel').length, 1);
     assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Exports are disabled before a report is generated');
     globalThis.fetch = async (url, init) => String(url) === `${api}/reports/sales`
       ? new Response(JSON.stringify({ error: { message: 'Error de reporte simulado' } }), { status: 503 })
       : actualFetch(url, init);
     await press('Generar reporte');
-    await until(() => content().includes('Error de reporte simulado') && !buttons('Generar reporte')[0].props.disabled, 'Report error surfaced');
+    await until(() => content().includes('No se pudo generar el reporte. Verifica tu conexión') && !buttons('Generar reporte')[0].props.disabled, 'Report error surfaced safely');
     assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Failed reports cannot be exported');
     globalThis.fetch = actualFetch;
     await press('Generar reporte');
     await until(() => !buttons('Exportar PDF')[0].props.disabled, 'Sales report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/sales`), 'Sales report request uses the API base and omits empty date filters');
     assert.ok(matchingSales.every(sale => content().includes(sale.id)));
     URL.createObjectURL = blob => { reportDownloads.push({ blob }); return `blob:fanix-report-${reportDownloads.length}`; };
     URL.revokeObjectURL = () => {};
@@ -143,14 +152,15 @@ try {
     assert.ok(allPdfText.includes(excludedSale.id), 'Unfiltered PDF includes the additional customer');
     const allWorkbook = require('@e965/xlsx').read(await reportDownloads[1].blob.arrayBuffer(), { type: 'array' });
     assert.match(reportDownloads[1].filename, /\.xlsx$/);
-    assert.deepEqual(allWorkbook.SheetNames, ['Resumen', 'Ventas']);
-    const allRows = require('@e965/xlsx').utils.sheet_to_json(allWorkbook.Sheets.Ventas, { header: 1, raw: true });
+    assert.deepEqual(allWorkbook.SheetNames, ['Resumen', 'Detalle']);
+    const allRows = require('@e965/xlsx').utils.sheet_to_json(allWorkbook.Sheets.Detalle, { header: 1, raw: true });
     assert.equal(allRows.length - 1, savedSales.length + manySales.length + 1);
 
     await choose('Cliente: Todos', db.customers.find(customer => customer.id === targetCustomerId).name);
     assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Changing filters invalidates the previous export data');
     await press('Generar reporte');
     await until(() => !buttons('Exportar PDF')[0].props.disabled, 'Filtered sales report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/sales?customerId=${targetCustomerId}`), 'Filtered report URL contains only the selected customer and no date parameters');
     await press('Exportar PDF');
     await until(() => buttons('Exportar PDF').length && !buttons('Exportar PDF')[0].props.disabled, 'Filtered PDF export complete');
     await press('Exportar Excel');
@@ -159,11 +169,13 @@ try {
     assert.ok(pdfText.includes(matchingSales[0].id) && !pdfText.includes(excludedSale.id), 'Filtered PDF excludes other customers');
     for (const sale of matchingSales) assert.ok(pdfText.includes(sale.id), `Filtered PDF contains ${sale.id}`);
     const reportXlsx = require('@e965/xlsx').read(await reportDownloads[3].blob.arrayBuffer(), { type: 'array' });
-    const reportRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Ventas, { header: 1, raw: true });
+    const reportRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Detalle, { header: 1, raw: true });
     const exportedIds = reportRows.slice(1).map(row => row[0]);
     assert.deepEqual(exportedIds, matchingSales.map(sale => sale.id), 'Excel exports the same complete filtered rows as PDF, including more than ten records');
     const summaryRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Resumen, { header: 1, raw: true });
     assert.equal(summaryRows.find(row => row[0] === 'Total vendido')[1], matchingSales.reduce((sum, sale) => sum + sale.total, 0), 'Filtered export summary matches the included sale total');
+    const auditBody = JSON.parse(reportRequests.find(item => item.url === `${api}/reports/export-audit` && String(item.body).includes(targetCustomerId))?.body ?? '{}');
+    assert.deepEqual(auditBody.filters, { customerId: targetCustomerId }, 'Export audit receives active filters only, without date parameters');
 
     await choose(`Cliente: ${db.customers.find(customer => customer.id === targetCustomerId).name}`, otherCustomer.name);
     await press('Generar reporte');
@@ -174,6 +186,40 @@ try {
     await press('Generar reporte');
     await until(() => content().includes('Sin registros para estos filtros'), 'Empty report generated');
     assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Filtered empty results cannot be exported');
+
+    await chooseOption('Tipo de reporte: Ventas', 'Compras');
+    const reportFilterLabelsFor = () => renderer.root.findAll(node => node.type === 'Pressable')
+      .map(node => node.props.accessibilityLabel)
+      .filter(label => typeof label === 'string' && /^(Tipo de reporte|Estado|Cliente|Proveedor|Movimiento):/.test(label));
+    let reportFilterLabels = reportFilterLabelsFor();
+    assert.ok(reportFilterLabels.includes('Proveedor: Todos') && !reportFilterLabels.includes('Cliente: Todos'), 'Purchases show supplier filters only');
+    await press('Generar reporte');
+    await until(() => !buttons('Exportar PDF')[0].props.disabled, 'Purchases report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/purchases`), 'Purchases endpoint uses the API base without date parameters');
+
+    await chooseOption('Tipo de reporte: Compras', 'Inventario');
+    reportFilterLabels = reportFilterLabelsFor();
+    assert.ok(reportFilterLabels.includes('Movimiento: Todos') && !reportFilterLabels.includes('Cliente: Todos') && !reportFilterLabels.includes('Proveedor: Todos'), 'Inventory shows movement filters only');
+    assert.equal(renderer.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Buscar producto en reportes').length, 1);
+
+    await chooseOption('Tipo de reporte: Inventario', 'Ejecutivo / General');
+    reportFilterLabels = reportFilterLabelsFor();
+    assert.deepEqual(reportFilterLabels, ['Tipo de reporte: Ejecutivo / General'], 'Executive report has no irrelevant filter controls');
+    await press('Generar reporte');
+    await until(() => content().includes('Productos con stock bajo') && content().includes('Reporte generado correctamente.'), 'Executive report generated');
+    assert.ok(reportRequests.some(item => item.url === `${api}/reports/summary`), 'Executive report uses the mounted summary endpoint without date parameters');
+
+    await press('Finanzas');
+    await until(() => content().includes('Servicios UI'), 'Leave report workspace');
+    const fetchBeforeHtml404 = globalThis.fetch;
+    globalThis.fetch = async (url, init) => String(url) === `${api}/reports/options`
+      ? new Response('<!DOCTYPE html><html><body>Cannot GET /api/v1/reports/options</body></html>', { status: 404, headers: { 'Content-Type': 'text/html' } })
+      : actualFetch(url, init);
+    await press('Reportes');
+    await until(() => content().includes('No se pudo cargar el módulo de Reportes.'), 'Safe missing-endpoint error shown');
+    assert.ok(!content().includes('<!DOCTYPE html>') && !content().includes('Cannot GET'), 'HTML error responses are not rendered in the UI');
+    assert.ok(buttons('Generar reporte')[0].props.disabled, 'Reports remain disabled when required options cannot load');
+    globalThis.fetch = fetchBeforeHtml404;
   } finally {
     if (originalDocument === undefined) delete globalThis.document;
     else globalThis.document = originalDocument;

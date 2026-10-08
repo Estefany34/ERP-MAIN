@@ -109,8 +109,7 @@ try {
     title: 'Reporte de ventas',
     companyName: 'Fanix Global',
     currency: 'MXN',
-    period: { from: '2026-10-01', to: '2026-10-31' },
-    filtersLabel: 'Periodo: 01/10/2026 - 31/10/2026',
+    filtersLabel: 'Alcance: Todos los registros disponibles',
     generatedAt,
     columns: [
       { key: 'id', label: 'ID', format: 'text' },
@@ -125,26 +124,29 @@ try {
   const genericPdf = createReportPdf(genericInput);
   const genericPdfText = new TextDecoder().decode(new Uint8Array(await genericPdf.arrayBuffer()));
   assert.ok(genericPdfText.startsWith('%PDF-') && genericPdfText.includes('FANIX GLOBAL'));
+  assert.ok(genericPdfText.includes('Fecha de generación') || genericPdfText.includes('Generado:'));
+  assert.ok(!genericPdfText.includes('Periodo:') && !genericPdfText.includes('undefined'));
   for (const row of genericRows) assert.ok(genericPdfText.includes(row.id), `Generic PDF contains ${row.id}`);
   const genericExcel = createReportExcel(genericInput);
   const genericExcelBytes = new Uint8Array(genericExcel);
   assert.ok(genericExcelBytes[0] === 0x50 && genericExcelBytes[1] === 0x4b);
   const genericWorkbook = XLSX.read(genericExcel, { type: 'array', cellDates: true, cellNF: true });
-  assert.deepEqual(genericWorkbook.SheetNames, ['Resumen', 'Ventas']);
-  const genericDetail = XLSX.utils.sheet_to_json(genericWorkbook.Sheets.Ventas, { header: 1, raw: true });
+  assert.deepEqual(genericWorkbook.SheetNames, ['Resumen', 'Detalle']);
+  const genericDetail = XLSX.utils.sheet_to_json(genericWorkbook.Sheets.Detalle, { header: 1, raw: true });
   assert.deepEqual(genericDetail.slice(1).map(row => row[0]), genericRows.map(row => row.id));
   assert.equal(genericDetail[1][2], genericRows[0].total);
-  assert.ok(genericWorkbook.Sheets.Ventas['C2'].z.includes('MXN'));
+  assert.ok(genericWorkbook.Sheets.Detalle['C2'].z.includes('MXN'));
   assert.ok(genericDetail[1][4] instanceof Date);
   const genericSummary = XLSX.utils.sheet_to_json(genericWorkbook.Sheets.Resumen, { header: 1, raw: true });
   assert.equal(genericSummary.find(row => row[0] === 'Total vendido')[1], 720.25);
-  assert.ok(genericWorkbook.Sheets.Resumen['B10'].z.includes('MXN'));
+  assert.ok(genericWorkbook.Sheets.Resumen['B9'].z.includes('MXN'));
+  assert.equal(genericSummary.some(row => row[0] === 'Periodo'), false, 'Generic report summary does not expose an unselected period');
   const unsafeWorkbook = XLSX.read(createReportExcel({
     ...genericInput,
     companyName: '=HYPERLINK("https://example.test")',
     rows: [{ ...genericRows[0], id: '=1+1', customer: '=2+2' }],
   }), { type: 'array' });
-  const unsafeDetail = XLSX.utils.sheet_to_json(unsafeWorkbook.Sheets.Ventas, { header: 1, raw: true });
+  const unsafeDetail = XLSX.utils.sheet_to_json(unsafeWorkbook.Sheets.Detalle, { header: 1, raw: true });
   assert.equal(unsafeDetail[1][0], "'=1+1");
   assert.equal(unsafeDetail[1][1], "'=2+2");
   assert.equal(XLSX.utils.sheet_to_json(unsafeWorkbook.Sheets.Resumen, { header: 1, raw: true })[2][1], "'=HYPERLINK(\"https://example.test\")");
@@ -161,7 +163,7 @@ try {
   assert.equal(executiveWorkbook.Sheets.Detalle['B2'].v, 65);
   assert.ok(executiveWorkbook.Sheets.Detalle['B2'].z.includes('MXN'), 'Executive currency values stay numeric and use the company currency format');
   const emptyGenericWorkbook = XLSX.read(createReportExcel({ ...genericInput, rows: [] }), { type: 'array' });
-  assert.deepEqual(XLSX.utils.sheet_to_json(emptyGenericWorkbook.Sheets.Ventas, { header: 1, raw: true }), [['ID', 'Cliente', 'Total', 'Estado', 'Fecha']]);
+  assert.deepEqual(XLSX.utils.sheet_to_json(emptyGenericWorkbook.Sheets.Detalle, { header: 1, raw: true }), [['ID', 'Cliente', 'Total', 'Estado', 'Fecha']]);
 
   const originalDocument = globalThis.document;
   const originalCreateObjectURL = URL.createObjectURL;
@@ -192,7 +194,7 @@ try {
     assert.match(downloads[2].filename, /\.pdf$/);
     assert.match(downloads[3].filename, /\.xlsx$/);
     assert.ok(new TextDecoder().decode(await downloads[2].blob.arrayBuffer()).startsWith('%PDF-'));
-    assert.deepEqual(XLSX.read(await downloads[3].blob.arrayBuffer(), { type: 'array' }).SheetNames, ['Resumen', 'Ventas']);
+    assert.deepEqual(XLSX.read(await downloads[3].blob.arrayBuffer(), { type: 'array' }).SheetNames, ['Resumen', 'Detalle']);
     assert.equal(downloads[2].filename, 'reporte-ventas-fanix-2026-10-08.pdf');
     assert.equal(downloads[3].filename, 'reporte-ventas-fanix-2026-10-08.xlsx');
   } finally {

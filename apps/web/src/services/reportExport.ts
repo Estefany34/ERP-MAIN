@@ -19,7 +19,6 @@ export type ReportExportInput = {
   title: string;
   companyName: string;
   currency: string;
-  period: { from: string | null; to: string | null };
   filtersLabel: string;
   generatedAt: Date;
   columns: ReportExportColumn[];
@@ -230,10 +229,9 @@ export function createReportPdf(report: ReportExportInput): Blob {
   doc.setFontSize(9);
   doc.setTextColor(75, 87, 102);
   doc.text(`Empresa: ${report.companyName}`, margin, 33);
-  doc.text(`Periodo: ${report.period.from ?? 'Sin límite'} - ${report.period.to ?? 'Sin límite'}`, margin, 39);
-  const filterLines = doc.splitTextToSize(`Filtros: ${report.filtersLabel || 'Ninguno'}`, pageWidth - margin * 2);
-  doc.text(filterLines, margin, 45);
-  const generationY = 45 + filterLines.length * 4.5;
+  const filterLines = doc.splitTextToSize(`Filtros: ${report.filtersLabel || 'Alcance: Todos los registros disponibles'}`, pageWidth - margin * 2);
+  doc.text(filterLines, margin, 39);
+  const generationY = 39 + filterLines.length * 4.5;
   doc.text(`Fecha de generación: ${formattedDate(report.generatedAt)}`, margin, generationY);
   let startY = generationY + 8;
 
@@ -299,8 +297,7 @@ export function createReportExcel(report: ReportExportInput): ArrayBuffer {
     ['Reporte', report.title],
     ['Empresa', spreadsheetText(report.companyName)],
     ['Tipo de reporte', spreadsheetText(report.type)],
-    ['Periodo', `${report.period.from ?? 'Sin límite'} - ${report.period.to ?? 'Sin límite'}`],
-    ['Filtros', spreadsheetText(report.filtersLabel || 'Ninguno')],
+    ['Filtros aplicados', spreadsheetText(report.filtersLabel || 'Alcance: Todos los registros disponibles')],
     ['Fecha de generación', report.generatedAt],
     [],
     ['Indicador', 'Valor'],
@@ -310,7 +307,7 @@ export function createReportExcel(report: ReportExportInput): ArrayBuffer {
   summary['!cols'] = [{ wch: 34 }, { wch: 48 }];
   for (let index = 0; index < report.kpis.length; index++) {
     const kpi = report.kpis[index]!;
-    const cell = summary[XLSX.utils.encode_cell({ r: 9 + index, c: 1 })];
+    const cell = summary[XLSX.utils.encode_cell({ r: 8 + index, c: 1 })];
     if (cell && kpi.format === 'currency') cell.z = `#,##0.00 "${report.currency}"`;
     else if (cell) cell.z = '#,##0.##';
   }
@@ -336,7 +333,7 @@ export function createReportExcel(report: ReportExportInput): ArrayBuffer {
   }
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, summary, 'Resumen');
-  XLSX.utils.book_append_sheet(workbook, detail, report.type === 'sales' ? 'Ventas' : 'Detalle');
+  XLSX.utils.book_append_sheet(workbook, detail, 'Detalle');
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'array', cellStyles: true });
 }
 

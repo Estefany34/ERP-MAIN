@@ -60,15 +60,14 @@ test('report types filter company data, enforce report permissions, calculate KP
     ...init,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
   });
-  const period = '?from=2026-10-01&to=2026-10-31';
   try {
     assert.equal((await call('/reports/sales', viewerToken)).status, 403);
     assert.equal((await call('/reports/sales', salesToken)).status, 200);
-    assert.equal((await call(`/reports/sales${period}`, inventoryToken)).status, 403);
+    assert.equal((await call('/reports/sales', inventoryToken)).status, 403);
     assert.equal((await call('/reports/customers', inventoryToken)).status, 403);
     assert.equal((await call('/reports/finance', salesToken)).status, 403);
-    assert.equal((await call(`/reports/summary${period}`, salesToken)).status, 403);
-    assert.equal((await call(`/reports/summary${period}`, inventoryToken)).status, 403);
+    assert.equal((await call('/reports/summary', salesToken)).status, 403);
+    assert.equal((await call('/reports/summary', inventoryToken)).status, 403);
     assert.equal((await call('/reports/export-audit', salesToken, { method: 'POST', body: JSON.stringify({ type: 'sales', format: 'pdf' }) })).status, 403);
     assert.equal((await call('/reports/export-audit', inventoryToken, { method: 'POST', body: JSON.stringify({ type: 'inventory', format: 'xlsx' }) })).status, 403);
 
@@ -87,7 +86,7 @@ test('report types filter company data, enforce report permissions, calculate KP
     assert.deepEqual(inventoryOptionData.customers, []);
     assert.deepEqual(inventoryOptionData.suppliers.map(item => item.id), [supplierId]);
 
-    const salesResponse = await call(`/reports/sales${period}&customerId=${customerId}&status=confirmed`, ownerToken);
+    const salesResponse = await call(`/reports/sales?customerId=${customerId}&status=confirmed`, ownerToken);
     const salesReport = await salesResponse.json() as { rows: { id: string; customer: string; items: { name: string }[] }[]; kpis: { key: string; value: number }[] };
     assert.equal(salesResponse.status, 200);
     assert.deepEqual(salesReport.rows.map(row => row.id), [saleId]);
@@ -95,29 +94,30 @@ test('report types filter company data, enforce report permissions, calculate KP
     assert.equal(salesReport.rows[0]?.items[0]?.name, 'Producto de reporte');
     assert.equal(salesReport.kpis.find(item => item.key === 'salesTotal')?.value, 100);
 
-    const crossTenantCustomer = await call(`/reports/sales${period}&customerId=${id()}`, ownerToken);
+    const crossTenantCustomer = await call(`/reports/sales?customerId=${id()}`, ownerToken);
     assert.equal((await crossTenantCustomer.json() as { rows: unknown[] }).rows.length, 0);
-    const purchases = await call(`/reports/purchases${period}&supplierId=${supplierId}&status=received`, ownerToken);
+    const purchases = await call(`/reports/purchases?supplierId=${supplierId}&status=received`, ownerToken);
     assert.deepEqual((await purchases.json() as { rows: { id: string }[] }).rows.map(row => row.id), [purchaseId]);
 
-    const inventory = await call(`/reports/inventory${period}&movementType=in`, ownerToken);
+    const inventory = await call('/reports/inventory?movementType=in&search=Producto%20de%20reporte', ownerToken);
     const inventoryReport = await inventory.json() as { rows: { stock: number; entries: number; status: string }[]; kpis: { key: string; value: number }[] };
+    assert.equal(inventoryReport.rows.length, 1);
     assert.equal(inventoryReport.rows[0]?.stock, 7);
     assert.equal(inventoryReport.rows[0]?.entries, 10);
     assert.equal(inventoryReport.rows[0]?.status, 'Normal');
     assert.equal(inventoryReport.kpis.find(item => item.key === 'entries')?.value, 10);
 
-    const finance = await call(`/reports/finance${period}&transactionType=income`, ownerToken);
+    const finance = await call('/reports/finance?transactionType=income', ownerToken);
     const financeReport = await finance.json() as { rows: { type: string }[]; kpis: { key: string; value: number }[] };
     assert.deepEqual(financeReport.rows.map(row => row.type), ['Ingreso']);
     assert.equal(financeReport.kpis.find(item => item.key === 'balance')?.value, 100);
 
-    const customers = await call(`/reports/customers${period}&search=Pedro`, ownerToken);
+    const customers = await call('/reports/customers?search=Pedro', ownerToken);
     const customerReport = await customers.json() as { rows: { customer: string; salesCount: number; salesTotal: number }[] };
     assert.equal(customerReport.rows.length, 1);
     assert.deepEqual(customerReport.rows[0], { id: customerId, customer: customer.name, email: customer.email, phone: customer.phone, classification: customer.classification, salesCount: 1, salesTotal: 100 });
 
-    const executive = await call(`/reports/summary${period}`, ownerToken);
+    const executive = await call('/reports/summary', ownerToken);
     const executiveData = await executive.json() as { kpis: { salesTotal: number; purchasesTotal: number; income: number; expenses: number }; report: { type: string; rows: { metric: string; value: number }[] } };
     assert.equal(executiveData.report.type, 'executive');
     assert.equal(executiveData.kpis.salesTotal, 100);
@@ -137,21 +137,33 @@ test('report types filter company data, enforce report permissions, calculate KP
 
     const exportAudit = await call('/reports/export-audit', ownerToken, {
       method: 'POST',
-      body: JSON.stringify({ type: 'sales', format: 'pdf', filters: { from: '2026-10-01', to: '2026-10-31', customerId } }),
+      body: JSON.stringify({ type: 'sales', format: 'pdf', filters: { customerId } }),
     });
     assert.equal(exportAudit.status, 201);
     assert.deepEqual(await exportAudit.json(), { recorded: true, rows: 1 });
+    const xlsxAudit = await call('/reports/export-audit', ownerToken, {
+      method: 'POST',
+      body: JSON.stringify({ type: 'sales', format: 'xlsx', filters: { customerId } }),
+    });
+    assert.equal(xlsxAudit.status, 201);
+    assert.deepEqual(await xlsxAudit.json(), { recorded: true, rows: 1 });
     const auditLogs = await call('/audit-logs?action=report.export&module=reports', ownerToken);
     const exports = await auditLogs.json() as { action: string; entityId: string; metadata?: Record<string, unknown>; userId: string }[];
-    const reportAudit = exports.find(item => item.action === 'report.export');
-    assert.equal(reportAudit?.entityId, 'sales');
-    assert.equal(reportAudit?.userId, owner.id);
-    assert.equal(reportAudit?.metadata?.type, 'sales');
-    assert.equal(reportAudit?.metadata?.format, 'pdf');
-    assert.equal(reportAudit?.metadata?.rows, 1);
-    assert.equal(reportAudit?.metadata?.customerId, undefined, 'Audit omits the sensitive customer identifier');
+    const reportAudits = exports.filter(item => item.action === 'report.export');
+    assert.deepEqual(reportAudits.map(item => item.metadata?.format).sort(), ['pdf', 'xlsx']);
+    for (const reportAudit of reportAudits) {
+      assert.equal(reportAudit.entityId, 'sales');
+      assert.equal(reportAudit.userId, owner.id);
+      assert.equal(reportAudit.metadata?.type, 'sales');
+      assert.equal(reportAudit.metadata?.rows, 1);
+      assert.equal(reportAudit.metadata?.customerId, undefined, 'Audit omits the sensitive customer identifier');
+      assert.equal(reportAudit.metadata?.from, undefined, 'Audit does not record unselected date filters');
+      assert.equal(reportAudit.metadata?.to, undefined, 'Audit does not record unselected date filters');
+    }
 
-    const otherSales = await call(`/reports/sales${period}`, otherToken);
+    assert.equal((await call('/reports/not-a-report', ownerToken)).status, 400);
+
+    const otherSales = await call('/reports/sales', otherToken);
     const otherReport = await otherSales.json() as { rows: { total: number }[] };
     assert.deepEqual(otherReport.rows.map(row => row.total), [99000]);
   } finally {

@@ -70,7 +70,7 @@ export function parseReportFilters(type: ReportType, value: unknown): ReportFilt
       if (filters.status && !allowedStatuses.purchases?.includes(filters.status)) issues.push({ code: z.ZodIssueCode.custom, path: ['status'], message: 'Estado de compra inválido.' });
       break;
     case 'inventory':
-      allow('from', 'to', 'movementType');
+      allow('from', 'to', 'movementType', 'search');
       break;
     case 'finance':
       allow('from', 'to', 'status', 'transactionType');
@@ -327,7 +327,11 @@ function buildPurchases(companyId: string, filters: ReportFilters): Pick<ReportD
 }
 
 function buildInventory(companyId: string, filters: ReportFilters): Pick<ReportDefinition, 'title' | 'columns' | 'kpis' | 'rows'> {
-  const products = db.products.filter(product => product.companyId === companyId);
+  const search = filters.search?.toLocaleLowerCase();
+  const products = db.products.filter(product =>
+    product.companyId === companyId &&
+    (!search || `${product.name} ${product.sku}`.toLocaleLowerCase().includes(search))
+  );
   const movements = db.movements.filter(movement =>
     movement.companyId === companyId &&
     inPeriod(movement.createdAt, filters) &&
