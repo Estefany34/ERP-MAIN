@@ -22,6 +22,8 @@ const ALL: Permission[] = [
   'reports.view','reports.export','users.view','users.manage','audit.view','company.manage'
 ];
 
+// This matrix is the single backend source of truth for authorization.
+// Routes should authorize capabilities with requirePermission instead of duplicating role lists.
 export const rolePermissions: Record<Role, Permission[]> = {
   owner: ALL,
   admin: ALL.filter(permission => permission !== 'company.manage'),
@@ -29,6 +31,10 @@ export const rolePermissions: Record<Role, Permission[]> = {
   inventory: ['inventory.view','inventory.create','inventory.update','purchases.view','purchases.update','reports.view'],
   viewer: ['customers.view','inventory.view','projects.view']
 };
+
+export function permissionsForRole(role: Role): Permission[] {
+  return [...(rolePermissions[role] ?? [])];
+}
 
 export function hasPermission(role: Role, permission: Permission) {
   return rolePermissions[role]?.includes(permission) ?? false;
