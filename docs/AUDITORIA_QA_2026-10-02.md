@@ -60,7 +60,6 @@ Los permisos se comprueban también en la API. La navegación móvil comparte es
 | Notificaciones | Listado y marca de lectura | Servicio generador de alertas, vencimientos y deduplicación |
 | Sucursales | Alta, edición y consulta | Desactivar desde interfaz y preferencias por sucursal |
 | Almacenes | Alta y asociación con sucursal | Transferencias y stock desglosado |
-| Documentos | Consulta del catálogo de metadatos, explícitamente identificada como parcial | Carga/descarga UI, almacenamiento durable y permisos por documento |
 | Auditoría | Consulta, búsqueda y paginación de eventos | Cobertura uniforme de todas las mutaciones, filtros y retención |
 | Reportes | Listado de ventas, búsqueda; CSV en web y contenido CSV compartible en Android | Rango de fechas, agregados, compras/inventario/finanzas y archivo CSV nativo |
 | Producción | API existente de recetas, inicio y finalización; prueba de integración y validación de componentes | Interfaz completa de recetas/órdenes; bloqueo consistente cuando el módulo está desactivado |
@@ -72,7 +71,6 @@ Los permisos se comprueban también en la API. La navegación móvil comparte es
 | Prioridad | Hallazgo | Consecuencia | Acción recomendada |
 |---|---|---|---|
 | Alta | MongoDB guarda un snapshot global; la respuesta exitosa se envía antes de terminar persistDatabase | Una falla de escritura puede perder operaciones; varias réplicas pueden sobrescribir estado | Repositorios por colección, transacciones de inventario y persistencia confirmada antes de responder |
-| Alta | Documentos se guardan en el sistema de archivos local | Sin disco persistente o storage externo, un redespliegue puede perder archivos aunque conserve metadatos | Configurar almacenamiento durable y verificar restauración |
 | Alta | Pagos no comprueba el saldo pendiente ni limita sobrepagos | Se pueden registrar importes superiores a una referencia | Validar saldo, moneda y transacción contable; pruebas de pagos parciales y concurrencia |
 | Alta | No se ha ejecutado la versión nueva del APK en el Motorola físico | Exportar el bundle Android no detecta todos los fallos nativos | Construir APK release e instalar; capturar adb logcat si falla |
 | Alta | La autenticación persistente concurrente usa AsyncStorage para tokens | En Android no es almacenamiento cifrado para secretos; en web existe exposición ante XSS | Conservar restauración funcional, migrar a SecureStore/cookies apropiadas y definir “recordarme” |
@@ -100,7 +98,7 @@ No se han verificado en esta auditoría: operaciones con una cuenta real de prod
 - Verificar que el stock final coincida exactamente con entradas, salidas y operaciones comerciales.
 - Cortar conexión durante una operación idempotente y reintentar sin duplicar datos.
 - Repetir el recorrido con roles Consulta, Ventas e Inventario; comprobar 403 en acciones no autorizadas.
-- Reiniciar API y confirmar registros de Atlas; redesplegar y comprobar archivos de documentos.
-- Completar pago parcial/final, conversión de cotización y archivo lógico antes de considerar cerrados esos módulos.
+- Reiniciar API y confirmar que los registros de Atlas persisten correctamente.
+- Completar pago parcial/final y conversión de cotización antes de considerar cerrados esos módulos.
 
 La prioridad de la siguiente fase debe ser persistencia/stock transaccional, archivos durables y pagos; después, validación del APK físico y los módulos parcialmente expuestos.

@@ -19,7 +19,6 @@ Fecha: 2026-09-23. Revisada la implementacion real de `apps/api/src`, `apps/web/
 | MOD-11 Produccion | BOM, consumo, producto terminado, ordenes | Implementado parcialmente | BOM, inicio, consumo y producto terminado implementados; faltan planificacion avanzada y reportes | Completar planificacion |
 | MOD-12 Reportes | Filtros, fechas, paginacion, CSV por modulo | Implementado parcialmente | Solo CSV de ventas sin filtros | Crear reportes parametrizados |
 | MOD-13 Automatizacion | Alertas, aprobaciones, vencimientos, ejecuciones | Implementado parcialmente | Notificaciones CRUD minimo; sin scheduler ni deduplicacion efectiva | Crear servicio de eventos y ejecuciones deduplicadas |
-| MOD-14 Documentos | Archivo, metadatos, descarga, permisos | Implementado parcialmente | Upload/download local seguro implementado; falta almacenamiento cloud y antivirus | Integrar proveedor externo cuando existan credenciales |
 | MOD-15 Soporte/auditoria | Incidencias, notificaciones, auditoria | Implementado parcialmente | Auditoria de algunas altas/ventas; no hay eventos uniformes | Centralizar auditoria y soporte |
 | MOD-16 Configuracion | Sucursales, moneda, zona, reglas, modulos | Implementado parcialmente | Empresa solo tiene moneda/modulos fijos | Agregar configuracion y validaciones |
 | MOD-17 Integraciones | Correo, facturacion, pagos, storage, externos | Pendiente por configuración externa | No hay adaptadores ni contratos de integracion | Crear interfaces y adaptadores verificables/simulables |

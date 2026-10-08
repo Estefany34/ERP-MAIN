@@ -11,7 +11,7 @@ Fecha de verificacion: 2026-09-23.
 - Clientes, productos, proveedores, compras, aprobacion, rechazo, recepcion, movimientos de inventario y ventas idempotentes.
 - Cotizaciones con impuestos y estados; pagos relacionados con ventas, compras y finanzas e idempotencia.
 - RRHH basico: empleados, estado, departamento, puesto y auditoria de altas.
-- Proyectos y tareas, finanzas basicas, notificaciones de lectura, documentos con metadatos y almacenamiento local seguro, incidencias y ordenes de produccion con BOM, consumo y producto terminado condicionadas al modulo habilitado.
+- Proyectos y tareas, finanzas basicas, notificaciones de lectura, incidencias y ordenes de produccion con BOM, consumo y producto terminado condicionadas al modulo habilitado.
 - Sucursales, almacenes y activacion de modulos por empresa.
 - Dashboard real por empresa, auditoria y exportacion CSV de ventas.
 - Consola React Native Web compartida con la app Expo movil: login, navegacion y consultas/altas basicas de modulos.
@@ -19,7 +19,7 @@ Fecha de verificacion: 2026-09-23.
 ## Pruebas ejecutadas
 
 - `npm run typecheck --workspace apps/api`: correcto.
-- `npm test --workspace apps/api`: 5 pruebas aprobadas, incluyendo cotizaciones, pagos, documentos y produccion.
+- `npm test --workspace apps/api`: 5 pruebas aprobadas, incluyendo cotizaciones, pagos y produccion.
 - `npx expo export --platform web`: correcto.
 - Health check HTTP local: correcto en `/api/v1/health`.
 - La prueba de flujo cubre aislamiento de empresas, compra-aprobacion-recepcion, inventario, venta idempotente y rechazo de stock insuficiente.
@@ -30,7 +30,6 @@ Fecha de verificacion: 2026-09-23.
 - El snapshot MongoDB centraliza persistencia de la aplicacion actual; aun faltan repositorios por agregado, migraciones y transacciones MongoDB nativas para concurrencia de alta escala.
 - Produccion incluye BOM y movimientos de consumo/obtencion, pero faltan planificacion avanzada, centros de trabajo y reportes de rendimiento.
 - Ventas y compras tienen cotizaciones, impuestos basicos y pagos internos; faltan cuentas por cobrar/pagar completas y conciliacion bancaria.
-- Documentos usan almacenamiento local seguro; falta proveedor cloud, antivirus y politicas de retencion.
 - Correo, pasarelas, facturacion fiscal, integraciones externas y resumentes periodicos requieren credenciales/servicios.
 - La consola movil comparte la experiencia funcional, pero falta navegacion nativa especifica y pruebas E2E de dispositivo.
 

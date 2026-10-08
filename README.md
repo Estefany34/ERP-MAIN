@@ -27,7 +27,7 @@ npm run web --workspace apps/web
 npm start --workspace apps/mobile
 ```
 
-La API implementa login/registro, aislamiento multiempresa, roles, persistencia Atlas, clientes, proveedores, productos, movimientos de inventario, ventas idempotentes, compras con aprobación y recepción, RRHH, proyectos, finanzas básicas, documentos, notificaciones, incidencias, producción condicionada, dashboard, auditoría e informe CSV de ventas. Los endpoints usan el prefijo `/api/v1/` y requieren `Authorization: Bearer <token>` salvo autenticación y health checks.
+La API implementa login/registro, aislamiento multiempresa, roles, persistencia Atlas, clientes, proveedores, productos, movimientos de inventario, ventas idempotentes, compras con aprobación y recepción, RRHH, proyectos, finanzas básicas, notificaciones, incidencias, producción condicionada, dashboard, auditoría e informe CSV de ventas. Los endpoints usan el prefijo `/api/v1/` y requieren `Authorization: Bearer <token>` salvo autenticación y health checks.
 
 ## Pruebas
 

@@ -26,7 +26,6 @@ export type Project = { id: string; companyId: string; name: string; customerId?
 export type Task = { id: string; companyId: string; projectId: string; title: string; assigneeId?: string; status: 'todo' | 'in_progress' | 'done'; dueOn?: string; createdAt: string };
 export type FinancialTransaction = { id: string; companyId: string; type: 'income' | 'expense'; category: string; amount: number; status: 'pending' | 'paid'; reference?: string; createdAt: string };
 export type Notification = { id: string; companyId: string; userId?: string; type: string; message: string; readAt?: string; dedupeKey: string; createdAt: string };
-export type DocumentRecord = { id: string; companyId: string; name: string; category: string; storageKey: string; entity?: string; entityId?: string; createdBy: string; createdAt: string };
 export type Incident = { id: string; companyId: string; title: string; description?: string; status: 'open' | 'resolved'; createdBy: string; createdAt: string };
 export type ProductionOrder = { id: string; companyId: string; productId: string; quantity: number; status: 'planned' | 'in_progress' | 'completed' | 'cancelled'; createdAt: string };
 export type Branch = { id: string; companyId: string; name: string; address?: string; active: boolean; createdAt: string };
@@ -35,7 +34,7 @@ export type BillOfMaterial = { id: string; companyId: string; productId: string;
 
 export const db = {
   companies: [] as Company[], users: [] as User[], memberships: [] as Membership[], sessions: [] as Session[], customers: [] as Customer[],
-  products: [] as Product[], movements: [] as InventoryMovement[], sales: [] as Sale[], quotes: [] as Quote[], payments: [] as Payment[], suppliers: [] as Supplier[], purchases: [] as Purchase[], employees: [] as Employee[], projects: [] as Project[], tasks: [] as Task[], financialTransactions: [] as FinancialTransaction[], notifications: [] as Notification[], documents: [] as DocumentRecord[], incidents: [] as Incident[], productionOrders: [] as ProductionOrder[], branches: [] as Branch[], warehouses: [] as Warehouse[], billsOfMaterial: [] as BillOfMaterial[], audits: [] as AuditLog[], subscriptions: [] as Subscription[], invitations: [] as Invitation[]
+  products: [] as Product[], movements: [] as InventoryMovement[], sales: [] as Sale[], quotes: [] as Quote[], payments: [] as Payment[], suppliers: [] as Supplier[], purchases: [] as Purchase[], employees: [] as Employee[], projects: [] as Project[], tasks: [] as Task[], financialTransactions: [] as FinancialTransaction[], notifications: [] as Notification[], incidents: [] as Incident[], productionOrders: [] as ProductionOrder[], branches: [] as Branch[], warehouses: [] as Warehouse[], billsOfMaterial: [] as BillOfMaterial[], audits: [] as AuditLog[], subscriptions: [] as Subscription[], invitations: [] as Invitation[]
 };
 
 export async function seedOwner(env = process.env) {
