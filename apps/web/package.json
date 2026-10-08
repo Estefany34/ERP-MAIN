@@ -8,13 +8,16 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "export": "expo export --platform web",
-    "test": "node ../../scripts/test-ui.mjs"
+    "test": "node ../../scripts/test-ui.mjs && node ../../scripts/test-report-export.mjs"
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "@expo/metro-runtime": "^6.1.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "^54.0.0",
     "expo-linear-gradient": "~15.0.8",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-native": "^0.81.5",

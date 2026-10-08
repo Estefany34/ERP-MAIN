@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, Share, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { Card } from '../components/ui/Card';
 import { DataTable } from '../components/ui/Table';
 import { LoadingState } from '../components/ui/LoadingState';
@@ -7,6 +7,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { useFanixTheme } from '../theme/FanixThemeProvider';
 import { labels, type Field, type ModuleConfig } from './config';
 import { fieldError } from './validation';
+import { downloadSalesReportExcel, downloadSalesReportPdf, prepareSalesReport } from '../services/reportExport';
 
 type Row = Record<string, any>;
 type Request = (path: string, init?: RequestInit) => Promise<any>;
@@ -23,6 +24,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const mounted = useRef(true);
@@ -139,7 +141,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     for (const column of config.columns) {
       const value = row[column.key];
       if (value == null || value === '') result[column.key] = column.key === 'readAt' ? 'Sin leer' : '—';
-      else if (sourceMap[column.key]) result[column.key] = choices[sourceMap[column.key]]?.find(choice => choice.id === value)?.name ?? value;
+      else if (sourceMap[column.key]) result[column.key] = choices[sourceMap[column.key]]?.find(choice => choice.id === value)?.name ?? (config.label === 'Reportes' && column.key === 'customerId' ? 'Cliente no disponible' : value);
       else if (['amount', 'total', 'price', 'cost'].includes(column.key)) { try { result[column.key] = new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(Number(value)); } catch { result[column.key] = String(value); } }
       else if (['createdAt', 'readAt'].includes(column.key)) result[column.key] = new Date(value).toLocaleString('es-MX');
       else if (typeof value === 'boolean') result[column.key] = value ? 'Sí' : 'No';
@@ -151,22 +153,28 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
   const pages = Math.max(1, Math.ceil(filtered.length / 10));
   const currentPage = Math.min(page, pages - 1);
   const visible = filtered.slice(currentPage * 10, currentPage * 10 + 10);
-  async function exportReport() {
-    const escape = (value: unknown) => `"${String(value ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""')}"`;
-    const csv = ['id,cliente,total,estado,fecha', ...filtered.map(row => [row.id, formatted(row).customerId, row.total, labels[row.status] ?? row.status, row.createdAt].map(escape).join(','))].join('\r\n');
+  async function exportReport(format: 'pdf' | 'xlsx') {
+    setExporting(true);
+    setError('');
     try {
-      if (Platform.OS === 'web') {
-        const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
-        const link = document.createElement('a'); link.href = url; link.download = 'ventas-fanix.csv'; link.click(); URL.revokeObjectURL(url);
-      } else await Share.share({ message: csv, title: 'Reporte de ventas Fanix' });
-    } catch { setError('No se pudo exportar el reporte. Vuelve a intentar.'); }
+      const reportRows = prepareSalesReport(filtered, choices.customers ?? []);
+      if (format === 'pdf') downloadSalesReportPdf(reportRows, currency);
+      else downloadSalesReportExcel(reportRows, currency);
+    } catch (err) {
+      setError(err instanceof Error ? `No se pudo generar o descargar el reporte: ${err.message}` : 'No se pudo generar o descargar el reporte. Vuelve a intentarlo.');
+    } finally {
+      setExporting(false);
+    }
   }
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={{ minHeight: 44, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.accentSoft, opacity: disabled ? 0.45 : 1 }}><Text style={{ color: theme.colors.accent, fontWeight: '600' }}>{label}</Text></Pressable>;
   return <Card style={{ padding: 18, gap: 14 }}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
       <Text style={{ flexGrow: 1, color: theme.colors.textPrimary, fontWeight: '700', fontSize: 18 }}>{config.label}</Text>
       {button('Actualizar', () => void load(), loading || busy)}
-      {config.label === 'Reportes' ? button('Exportar ventas', () => void exportReport(), loading || !!error || !filtered.length) : null}
+      {config.label === 'Reportes' ? <>
+        {button('Exportar PDF', () => void exportReport('pdf'), loading || !!error || !filtered.length || exporting)}
+        {button('Exportar Excel', () => void exportReport('xlsx'), loading || !!error || !filtered.length || exporting)}
+      </> : null}
       {canWrite && !formOpen ? button('Nuevo registro', () => { clearForm(); setFormOpen(true); }, busy) : null}
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{error}</Text> : null}

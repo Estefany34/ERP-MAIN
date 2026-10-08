@@ -94,6 +94,52 @@ try {
   await act(async () => buttons('Seleccionar…')[0].props.onPress()); await press('Proveedor desde UI'); await press('Seleccionar…'); await press('Producto desde UI · UI-1'); await fill('Cantidad', '3'); await press('Agregar producto'); await press('Guardar');
   await until(() => buttons('Aprobar').length && !buttons('Aprobar')[0].props.disabled, 'Purchase saved'); await press('Aprobar'); await until(() => buttons('Recibir mercancía').length && !buttons('Recibir mercancía')[0].props.disabled, 'Purchase approved'); await press('Recibir mercancía'); await until(() => !buttons('Recibir mercancía').length && !buttons('Actualizar')[0].props.disabled, 'Purchase received');
   const finalStock = db.movements.reduce((sum, movement) => sum + (movement.type === 'out' ? -movement.quantity : movement.quantity), 0); assert.equal(finalStock, 6);
+  const savedSales = [...db.sales];
+  const excludedSale = { ...db.sales[0], id: 'qa-excluded-report-sale', total: 999 };
+  db.sales.push(excludedSale);
+  const originalDocument = globalThis.document;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const reportDownloads = [];
+  try {
+    await press('Reportes'); await until(() => buttons('Exportar PDF').length && !buttons('Actualizar')[0].props.disabled, 'Reports loaded');
+    assert.equal(buttons('Exportar Excel').length, 1);
+    assert.ok(!buttons('Exportar PDF')[0].props.disabled && !buttons('Exportar Excel')[0].props.disabled);
+    await fill('Buscar en Reportes', db.sales[0].id);
+    assert.ok(content().includes(db.sales[0].id));
+    URL.createObjectURL = blob => { reportDownloads.push({ blob }); return `blob:fanix-report-${reportDownloads.length}`; };
+    URL.revokeObjectURL = () => {};
+    globalThis.document = {
+      body: { appendChild() {} },
+      createElement() {
+        return { style: {}, click() { reportDownloads.at(-1).filename = this.download; }, remove() {} };
+      },
+    };
+    await press('Exportar PDF');
+    await press('Exportar Excel');
+    const pdfText = new TextDecoder().decode(await reportDownloads[0].blob.arrayBuffer());
+    assert.match(reportDownloads[0].filename, /\.pdf$/);
+    const selectedIdPrefix = db.sales[0].id.slice(0, 8);
+    assert.ok(pdfText.includes(selectedIdPrefix) && !pdfText.includes(excludedSale.id.slice(0, 8)), 'PDF exports only the active search results');
+    const reportXlsx = require('@e965/xlsx').read(await reportDownloads[1].blob.arrayBuffer(), { type: 'array' });
+    const reportRows = require('@e965/xlsx').utils.sheet_to_json(reportXlsx.Sheets.Ventas, { header: 1, raw: true });
+    assert.match(reportDownloads[1].filename, /\.xlsx$/);
+    assert.deepEqual(reportRows.slice(5, 6).map(row => row[0]), [db.sales[0].id], 'Excel exports the same active search results as PDF');
+    assert.equal(reportRows.find(row => row[0] === 'Monto total')[1], db.sales[0].total, 'Filtered export summary excludes unselected sales');
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+    db.sales.splice(0, db.sales.length, ...savedSales);
+  }
+  await fill('Buscar en Reportes', 'sin coincidencias');
+  assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Filtered empty results cannot be exported');
+  db.sales.splice(0);
+  await fill('Buscar en Reportes', ''); await press('Actualizar'); await until(() => !buttons('Actualizar')[0].props.disabled, 'Empty reports loaded');
+  assert.ok(content().includes('Sin registros'));
+  assert.ok(buttons('Exportar PDF')[0].props.disabled && buttons('Exportar Excel')[0].props.disabled, 'Empty reports cannot be exported');
+  db.sales.push(...savedSales);
   await press('Incidencias'); await until(() => !buttons('Actualizar')[0].props.disabled, 'Mobile incident list');
   globalThis.__qaWidth = 390; await act(async () => renderer.update(React.createElement(App)));
   assert.ok(renderer.root.findAll(node => node.type === 'Text' && text(node) === 'Incidencia desde UI').length);
@@ -102,7 +148,7 @@ try {
   await until(() => content().includes('Administrador · Propietario'), 'Persistent session restored');
   assert.equal(db.sessions.length, 1, 'Restoration refreshes the existing server session');
   await press('Cerrar sesión'); await until(() => buttons('Iniciar sesión').length, 'Logout'); assert.ok(db.sessions.every(session => session.revokedAt));
-  console.log('PASS: landing/login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase callbacks with final stock=6, narrow-screen rendering and server logout.');
+  console.log('PASS: landing/login/persistent session/refresh, create/edit/search, notification mode, projects, finance, incidents, product/inventory/sale/purchase, filtered PDF/XLSX parity, empty-state export guards, final stock=6, narrow-screen rendering and server logout.');
 } finally {
   if (renderer) await act(async () => renderer.unmount());
   server.close(); await rm(temporary, { recursive: true, force: true });
