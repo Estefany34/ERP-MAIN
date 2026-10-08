@@ -10,6 +10,7 @@ import { fieldError } from './validation';
 
 type Row = Record<string, any>;
 type Request = (path: string, init?: RequestInit) => Promise<any>;
+
 export function ModuleWorkspace({ config, role, userId, currency, request, onChanged }: { config: ModuleConfig; role: string; userId: string; currency: string; request: Request; onChanged: () => void }) {
   const { theme } = useFanixTheme();
   const [rows, setRows] = useState<Row[]>([]);
@@ -31,6 +32,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
   const idempotencyKey = useRef('');
   const canWrite = !!config.fields && !!config.writeRoles?.includes(role);
   const manager = ['owner', 'admin'].includes(role);
+
   function defaults() {
     const result: Record<string, string> = {};
     for (const field of config.fields ?? []) {
@@ -40,22 +42,28 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     }
     return result;
   }
-  function change(key: string, value: string) { setValues(previous => ({ ...previous, [key]: value })); idempotencyKey.current = ''; setSuccess(''); }
+
+  function change(key: string, value: string) {
+    setValues(previous => ({ ...previous, [key]: value }));
+    idempotencyKey.current = '';
+    setError('');
+    setSuccess('');
+  }
+
   async function load() {
     const sequence = ++version.current;
     setLoading(true); setError('');
     const sources = new Set((config.fields ?? []).flatMap(field => field.source ? [field.source] : []));
     if (config.commercial) sources.add('products');
-    // Resolve names for read-only lists as well as form selectors.
     if (config.columns.some(column => column.key === 'productId')) sources.add('products');
     if (config.columns.some(column => column.key === 'customerId')) sources.add('customers');
     if (config.columns.some(column => column.key === 'supplierId')) sources.add('suppliers');
     try {
       const data = await request(config.path);
       const options = await Promise.all([...sources].map(async source => {
-        // Viewer roles can list projects without listing company members.
         if (source === 'company/members' && !['owner', 'admin', 'sales'].includes(role)) return [source, []] as const;
-        return [source, await request(source)] as const;
+        const result = await request(source);
+        return [source, Array.isArray(result) ? result : []] as const;
       }));
       if (!mounted.current || version.current !== sequence) return;
       setRows(Array.isArray(data) ? data : []);
@@ -64,17 +72,20 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
       if (mounted.current && version.current === sequence) { setRows([]); setError(err instanceof Error ? err.message : 'No se pudo cargar el módulo.'); }
     } finally { if (mounted.current && version.current === sequence) setLoading(false); }
   }
-  useEffect(() => { mounted.current = true; void load(); return () => { mounted.current = false; version.current++; }; }, []);
-  function clearForm() { setValues(defaults()); setItems([]); setEditing(null); setFormOpen(false); idempotencyKey.current = ''; }
+
+  useEffect(() => { mounted.current = true; void load(); return () => { mounted.current = false; version.current++; }; }, [config.path]);
+
+  function clearForm() { setValues(defaults()); setItems([]); setEditing(null); setFormOpen(false); setError(''); idempotencyKey.current = ''; }
+
   function validated(field: Field) {
-    const value = (values[field.key] ?? '').trim();
+    const value = String(values[field.key] ?? '').trim();
     const issue = fieldError(field, value);
     if (issue) throw new Error(`${field.label}: ${issue}`);
     if (!value && field.required) throw new Error(`${field.label}: completa este campo.`);
     if (!value) return undefined;
     if (field.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error(`${field.label}: escribe un correo válido.`);
     if (field.maxLength && value.length > field.maxLength) throw new Error(`${field.label}: máximo ${field.maxLength} caracteres.`);
-    if (field.source && !(choices[field.source] ?? []).some(row => row.id === value)) throw new Error(`${field.label}: selecciona un registro válido.`);
+    if (field.source && !(choices[field.source] ?? []).some(row => String(row.id) === value)) throw new Error(`${field.label}: selecciona un registro válido.`);
     if (field.numeric) {
       const number = Number(value.replace(',', '.'));
       if (!Number.isFinite(number) || (field.integer && !Number.isInteger(number)) || (field.min !== undefined && number < field.min) || (field.max !== undefined && number > field.max)) throw new Error(`${field.label}: escribe un número válido${field.min !== undefined ? `, mínimo ${field.min}` : ''}.`);
@@ -83,6 +94,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     if (['name', 'title', 'category'].includes(field.key) && value.length < 2) throw new Error(`${field.label}: escribe al menos dos caracteres.`);
     return value;
   }
+
   async function save() {
     if (mutationLock.current) return;
     setError(''); setSuccess('');
@@ -90,7 +102,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     try {
       payload = Object.fromEntries((config.fields ?? []).map(field => [field.key, validated(field)]).filter(([, value]) => value !== undefined));
       if (config.commercial) {
-        if (!items.length) throw new Error('Agrega al menos un producto.');
+        if (!items.length) throw new Error('Selecciona un producto y pulsa “Agregar producto” antes de guardar.');
         payload.items = items.map(({ productId, quantity, unitPrice, unitCost }) => config.commercial === 'purchase' ? { productId, quantity, unitCost } : { productId, quantity, unitPrice });
       }
     } catch (err) { setError(err instanceof Error ? err.message : 'Revisa el formulario.'); return; }
@@ -104,6 +116,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     } catch (err) { if (mounted.current) setError(err instanceof Error ? err.message : 'No se pudo guardar.'); }
     finally { mutationLock.current = false; if (mounted.current) setBusy(false); }
   }
+
   async function action(path: string, method = 'POST', body?: Row) {
     if (mutationLock.current) return;
     mutationLock.current = true; setBusy(true); setError(''); setSuccess('');
@@ -111,6 +124,7 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     catch (err) { if (mounted.current) setError(err instanceof Error ? err.message : 'No se pudo completar.'); }
     finally { mutationLock.current = false; if (mounted.current) setBusy(false); }
   }
+
   function actionsFor(row: Row) {
     const actions: { label: string; onPress: () => void }[] = [];
     const add = (label: string, suffix: string, method?: string, body?: Row) => actions.push({ label, onPress: () => void action(`${config.path}/${row.id}/${suffix}`, method, body) });
@@ -133,13 +147,14 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     }
     return actions;
   }
+
   function formatted(row: Row) {
     const result: Row = { ...row };
     const sourceMap: Record<string, string> = { productId: 'products', customerId: 'customers', supplierId: 'suppliers', ownerId: 'company/members', branchId: 'branches' };
     for (const column of config.columns) {
       const value = row[column.key];
       if (value == null || value === '') result[column.key] = column.key === 'readAt' ? 'Sin leer' : '—';
-      else if (sourceMap[column.key]) result[column.key] = choices[sourceMap[column.key]]?.find(choice => choice.id === value)?.name ?? value;
+      else if (sourceMap[column.key]) result[column.key] = choices[sourceMap[column.key]]?.find(choice => String(choice.id) === String(value))?.name ?? value;
       else if (['amount', 'total', 'price', 'cost'].includes(column.key)) { try { result[column.key] = new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(Number(value)); } catch { result[column.key] = String(value); } }
       else if (['createdAt', 'readAt'].includes(column.key)) result[column.key] = new Date(value).toLocaleString('es-MX');
       else if (typeof value === 'boolean') result[column.key] = value ? 'Sí' : 'No';
@@ -147,37 +162,34 @@ export function ModuleWorkspace({ config, role, userId, currency, request, onCha
     }
     return result;
   }
+
   const filtered = rows.filter(row => config.columns.some(column => String(formatted(row)[column.key] ?? '').toLocaleLowerCase().includes(search.toLocaleLowerCase())));
   const pages = Math.max(1, Math.ceil(filtered.length / 10));
   const currentPage = Math.min(page, pages - 1);
   const visible = filtered.slice(currentPage * 10, currentPage * 10 + 10);
+
   async function exportReport() {
     const escape = (value: unknown) => `"${String(value ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""')}"`;
     const csv = ['id,cliente,total,estado,fecha', ...filtered.map(row => [row.id, formatted(row).customerId, row.total, labels[row.status] ?? row.status, row.createdAt].map(escape).join(','))].join('\r\n');
     try {
-      if (Platform.OS === 'web') {
-        const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
-        const link = document.createElement('a'); link.href = url; link.download = 'ventas-fanix.csv'; link.click(); URL.revokeObjectURL(url);
-      } else await Share.share({ message: csv, title: 'Reporte de ventas Fanix' });
+      if (Platform.OS === 'web') { const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = 'ventas-fanix.csv'; link.click(); URL.revokeObjectURL(url); }
+      else await Share.share({ message: csv, title: 'Reporte de ventas Fanix' });
     } catch { setError('No se pudo exportar el reporte. Vuelve a intentar.'); }
   }
+
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={{ minHeight: 44, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.accentSoft, opacity: disabled ? 0.45 : 1 }}><Text style={{ color: theme.colors.accent, fontWeight: '600' }}>{label}</Text></Pressable>;
+
   return <Card style={{ padding: 18, gap: 14 }}>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-      <Text style={{ flexGrow: 1, color: theme.colors.textPrimary, fontWeight: '700', fontSize: 18 }}>{config.label}</Text>
-      {button('Actualizar', () => void load(), loading || busy)}
-      {config.label === 'Reportes' ? button('Exportar ventas', () => void exportReport(), loading || !!error || !filtered.length) : null}
-      {canWrite && !formOpen ? button('Nuevo registro', () => { clearForm(); setFormOpen(true); }, busy) : null}
-    </View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><Text style={{ flexGrow: 1, color: theme.colors.textPrimary, fontWeight: '700', fontSize: 18 }}>{config.label}</Text>{button('Actualizar', () => void load(), loading || busy)}{config.label === 'Reportes' ? button('Exportar ventas', () => void exportReport(), loading || !!error || !filtered.length) : null}{canWrite && !formOpen ? button('Nuevo registro', () => { clearForm(); setFormOpen(true); }, busy) : null}</View>
     {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{error}</Text> : null}
     {success ? <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.accent }}>{success}</Text> : null}
-    {pendingDelete ? <View style={{ gap: 10 }}><Text style={{ color: theme.colors.danger }}>¿Eliminar {pendingDelete.name}? Esta acción es permanente. Los registros relacionados impedirán la eliminación.</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{button('Confirmar eliminación', () => { void action(`${config.path}/${pendingDelete.id}`, 'DELETE').then(() => setPendingDelete(null)); }, busy)}{button('Cancelar eliminación', () => setPendingDelete(null), busy)}</View></View> : null}
+    {pendingDelete ? <View style={{ gap: 10 }}><Text style={{ color: theme.colors.danger }}>¿Eliminar {pendingDelete.name}? Esta acción es permanente.</Text><View style={{ flexDirection: 'row', gap: 8 }}>{button('Confirmar eliminación', () => { void action(`${config.path}/${pendingDelete.id}`, 'DELETE').then(() => setPendingDelete(null)); }, busy)}{button('Cancelar eliminación', () => setPendingDelete(null), busy)}</View></View> : null}
     {config.label === 'Documentos' ? <Text style={{ color: theme.colors.textSecondary }}>Consulta del catálogo de documentos. La carga y descarga de archivos desde esta interfaz sigue pendiente.</Text> : null}
     {formOpen && canWrite ? <View style={{ gap: 12, paddingVertical: 12 }}>
       <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{editing ? 'Editar registro' : 'Nuevo registro'}</Text>
       {(config.fields ?? []).map(field => <FieldInput key={field.key} field={field} value={values[field.key] ?? ''} onChange={value => change(field.key, value)} choices={choices[field.source ?? ''] ?? []} disabled={busy} />)}
-      {config.commercial ? <CommercialItems products={choices.products ?? []} items={items} onChange={next => { setItems(next); idempotencyKey.current = ''; }} purchase={config.commercial === 'purchase'} disabled={busy} /> : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{button(busy ? 'Guardando…' : 'Guardar', () => void save(), busy || loading)}{button('Cancelar', clearForm, busy)}</View>
+      {config.commercial ? <CommercialItems products={choices.products ?? []} items={items} onChange={next => { setItems(next); setError(''); setSuccess(''); idempotencyKey.current = ''; }} purchase={config.commercial === 'purchase'} disabled={busy} currency={currency} /> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{button(busy ? 'Guardando…' : config.commercial ? 'Registrar operación' : 'Guardar', () => void save(), busy || loading)}{button('Cancelar', clearForm, busy)}</View>
     </View> : null}
     <TextInput accessibilityLabel={`Buscar en ${config.label}`} placeholder="Buscar en registros…" placeholderTextColor={theme.colors.inputPlaceholder} value={search} onChangeText={value => { setSearch(value); setPage(0); }} style={{ color: theme.colors.textPrimary, borderWidth: 1, borderColor: theme.colors.inputBorder, padding: 12, borderRadius: 8, minHeight: 44 }} />
     {loading ? <LoadingState label="Cargando registros…" /> : !visible.length ? <EmptyState title={search ? 'Sin coincidencias' : 'Sin registros'} description={error ? 'Actualiza para volver a intentar.' : search ? 'Prueba otra búsqueda.' : 'Los registros de tu empresa aparecerán aquí.'} /> : <DataTable rows={visible.map(formatted)} columns={config.columns} actions={(_row, index) => actionsFor(visible[index])} disabled={busy} />}
@@ -191,45 +203,66 @@ function FieldInput({ field, value, onChange, choices = [], disabled }: { field:
   const [selecting, setSelecting] = useState(false);
   const [touched, setTouched] = useState(false);
   const issue = touched ? fieldError(field, value) : '';
-  const selected = choices.find(row => row.id === value);
-  const options: Row[] = field.options?.map(option => ({ id: option, name: labels[option] ?? option })) ?? choices.filter(row => `${row.name} ${row.sku ?? ''}`.toLowerCase().includes(query.toLowerCase())).slice(0, 20);
+  const selected = choices.find(row => String(row.id) === String(value));
+  const options: Row[] = field.options?.map(option => ({ id: option, name: labels[option] ?? option })) ?? choices.filter(row => `${row.name ?? ''} ${row.sku ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 30);
   return <View style={{ gap: 6 }}>
     <Text style={{ color: theme.colors.textSecondary }}>{field.label}{field.required ? ' *' : ''}</Text>
     {field.options || field.source ? <>
-      {field.source ? <Pressable accessibilityRole="button" disabled={disabled} onPress={() => setSelecting(previous => !previous)} style={{ minHeight: 44, borderWidth: 1, borderColor: theme.colors.border, padding: 12, borderRadius: 8 }}><Text style={{ color: theme.colors.textPrimary }}>{selected?.name ?? 'Seleccionar…'}</Text></Pressable> : null}
+      {field.source ? <Pressable accessibilityRole="button" disabled={disabled} onPress={() => setSelecting(previous => !previous)} style={{ minHeight: 44, borderWidth: 1, borderColor: theme.colors.border, padding: 12, borderRadius: 8 }}><Text style={{ color: theme.colors.textPrimary }}>{selected?.name ? `${selected.name}${selected.sku ? ` · ${selected.sku}` : ''}` : 'Seleccionar registro…'}</Text></Pressable> : null}
       {(!field.source || selecting) ? <>
-        {field.source ? <TextInput accessibilityLabel={`Buscar ${field.label}`} value={query} onChangeText={setQuery} placeholder="Buscar…" placeholderTextColor={theme.colors.inputPlaceholder} style={{ color: theme.colors.textPrimary, borderWidth: 1, borderColor: theme.colors.border, padding: 12, borderRadius: 8 }} /> : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{options.map(option => <Pressable key={option.id} disabled={disabled} accessibilityRole="button" accessibilityState={{ selected: value === option.id, disabled }} onPress={() => { onChange(option.id); setSelecting(false); }} style={{ minHeight: 44, padding: 12, borderRadius: 8, backgroundColor: value === option.id ? theme.colors.accentSoft : theme.colors.surfaceSecondary, borderWidth: 1, borderColor: theme.colors.border }}><Text style={{ color: theme.colors.textPrimary }}>{option.name}{option.sku ? ` · ${option.sku}` : ''}</Text></Pressable>)}</View>
-        {!options.length ? <Text style={{ color: theme.colors.textSecondary }}>No hay opciones. Primero crea un registro en el módulo correspondiente.</Text> : null}
+        {field.source ? <TextInput accessibilityLabel={`Buscar ${field.label}`} value={query} onChangeText={setQuery} placeholder={`Buscar ${field.label.toLowerCase()}…`} placeholderTextColor={theme.colors.inputPlaceholder} style={{ color: theme.colors.textPrimary, borderWidth: 1, borderColor: theme.colors.border, padding: 12, borderRadius: 8 }} /> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{options.map(option => <Pressable key={String(option.id)} disabled={disabled} accessibilityRole="button" accessibilityState={{ selected: String(value) === String(option.id), disabled }} onPress={() => { onChange(String(option.id)); setQuery(''); setSelecting(false); setTouched(true); }} style={{ minHeight: 44, padding: 12, borderRadius: 8, backgroundColor: String(value) === String(option.id) ? theme.colors.accentSoft : theme.colors.surfaceSecondary, borderWidth: 1, borderColor: theme.colors.border }}><Text style={{ color: theme.colors.textPrimary }}>{option.name}{option.sku ? ` · ${option.sku}` : ''}</Text></Pressable>)}</View>
+        {!options.length ? <Text style={{ color: theme.colors.textSecondary }}>No hay registros disponibles para seleccionar.</Text> : null}
         {field.source && !field.required ? <Pressable disabled={disabled} accessibilityRole="button" onPress={() => { onChange(''); setSelecting(false); }}><Text style={{ color: theme.colors.accent, padding: 12 }}>Sin asignar</Text></Pressable> : null}
       </> : null}
     </> : <TextInput editable={!disabled} accessibilityLabel={field.label} value={value} onChangeText={onChange} onBlur={() => setTouched(true)} autoCapitalize={field.email || field.key === 'sku' ? 'none' : 'sentences'} autoCorrect={!field.email && field.key !== 'sku'} keyboardType={field.numeric ? 'decimal-pad' : field.email ? 'email-address' : 'default'} multiline={field.key === 'description'} maxLength={field.key === 'phone' ? 20 : field.email ? 254 : field.maxLength} style={{ color: theme.colors.textPrimary, minHeight: 44, borderWidth: 1, borderColor: issue ? theme.colors.danger : theme.colors.inputBorder, borderRadius: 8, padding: 12 }} />}
     {issue ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{issue}</Text> : null}
   </View>;
 }
-function CommercialItems({ products, items, onChange, purchase, disabled }: { products: Row[]; items: Row[]; onChange: (items: Row[]) => void; purchase: boolean; disabled: boolean }) {
+
+function CommercialItems({ products, items, onChange, purchase, disabled, currency }: { products: Row[]; items: Row[]; onChange: (items: Row[]) => void; purchase: boolean; disabled: boolean; currency: string }) {
   const { theme } = useFanixTheme();
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
   const [error, setError] = useState('');
+  const selectedProduct = products.find(row => String(row.id) === String(productId));
+
+  function selectProduct(value: string) {
+    const product = products.find(row => String(row.id) === String(value));
+    setProductId(String(value));
+    setPrice(product == null ? '' : String(product[purchase ? 'cost' : 'price'] ?? ''));
+    setError('');
+  }
+
   function add() {
-    const product = products.find(row => row.id === productId);
+    const product = products.find(row => String(row.id) === String(productId));
     const count = Number(quantity);
-    const unit = Number(price.replace(',', '.'));
-    if (!product || !Number.isInteger(count) || count < 1 || !price.trim() || !Number.isFinite(unit) || unit < 0) { setError('Selecciona un producto, una cantidad entera positiva y un precio válido.'); return; }
-    if (items.some(row => row.productId === productId)) { setError('Ese producto ya está agregado. Retíralo para cambiar su cantidad.'); return; }
-    onChange([...items, { productId, name: product.name, quantity: count, [purchase ? 'unitCost' : 'unitPrice']: unit }]);
+    const unit = Number(String(price).replace(',', '.'));
+    if (!product) { setError('Selecciona un producto existente del catálogo.'); return; }
+    if (!Number.isInteger(count) || count < 1) { setError('La cantidad debe ser un número entero mayor a cero.'); return; }
+    if (!String(price).trim() || !Number.isFinite(unit) || unit < 0) { setError('El precio del producto no es válido. Revisa el producto registrado.'); return; }
+    const existing = items.findIndex(row => String(row.productId) === String(productId));
+    const next = { productId: String(product.id), name: product.name, sku: product.sku, quantity: count, [purchase ? 'unitCost' : 'unitPrice']: unit };
+    if (existing >= 0) { const copy = [...items]; copy[existing] = next; onChange(copy); }
+    else onChange([...items, next]);
     setProductId(''); setQuantity('1'); setPrice(''); setError('');
   }
+
+  const subtotal = items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice ?? item.unitCost ?? 0), 0);
+  const money = (value: number) => { try { return new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(value); } catch { return value.toFixed(2); } };
+
   return <View style={{ gap: 10 }}>
     <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Productos de la operación</Text>
-    <FieldInput field={{ key: 'productId', label: 'Producto', source: 'products', required: true }} value={productId} onChange={value => { setProductId(value); const product = products.find(row => row.id === value); setPrice(String(product?.[purchase ? 'cost' : 'price'] ?? '')); }} choices={products} disabled={disabled} />
-    <FieldInput field={{ key: 'quantity', label: 'Cantidad', numeric: true }} value={quantity} onChange={setQuantity} disabled={disabled} />
-    <FieldInput field={{ key: 'price', label: purchase ? 'Costo unitario' : 'Precio unitario', numeric: true }} value={price} onChange={setPrice} disabled={disabled} />
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={add} style={{ minHeight: 44, padding: 12 }}><Text style={{ color: theme.colors.accent }}>Agregar producto</Text></Pressable>
+    {!products.length ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>No hay productos disponibles. Registra primero un producto en el catálogo.</Text> : null}
+    <FieldInput field={{ key: 'productId', label: 'Producto', source: 'products', required: true }} value={productId} onChange={selectProduct} choices={products} disabled={disabled || !products.length} />
+    {selectedProduct ? <Text style={{ color: theme.colors.textSecondary }}>Seleccionado: {selectedProduct.name}{selectedProduct.sku ? ` · ${selectedProduct.sku}` : ''}</Text> : null}
+    <FieldInput field={{ key: 'quantity', label: 'Cantidad', numeric: true, integer: true, min: 1 }} value={quantity} onChange={value => { setQuantity(value); setError(''); }} disabled={disabled} />
+    <FieldInput field={{ key: 'price', label: purchase ? 'Costo unitario' : 'Precio unitario', numeric: true, min: 0 }} value={price} onChange={value => { setPrice(value); setError(''); }} disabled={disabled} />
+    <Pressable accessibilityRole="button" disabled={disabled || !productId} onPress={add} style={{ minHeight: 44, paddingHorizontal: 14, paddingVertical: 11, alignSelf: 'flex-start', borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.accentSoft, opacity: disabled || !productId ? 0.45 : 1 }}><Text style={{ color: theme.colors.accent, fontWeight: '700' }}>{items.some(row => String(row.productId) === String(productId)) ? 'Actualizar producto' : 'Agregar producto'}</Text></Pressable>
     {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.danger }}>{error}</Text> : null}
-    {items.map(item => <View key={item.productId} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><Text style={{ color: theme.colors.textPrimary, flex: 1 }}>{item.name} · {item.quantity} × {item.unitPrice ?? item.unitCost}</Text><Pressable accessibilityRole="button" disabled={disabled} onPress={() => onChange(items.filter(row => row.productId !== item.productId))} style={{ padding: 12, minHeight: 44 }}><Text style={{ color: theme.colors.danger }}>Quitar</Text></Pressable></View>)}
-    <Text style={{ color: theme.colors.textPrimary }}>Subtotal: {items.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? item.unitCost), 0).toFixed(2)}</Text>
+    {items.map(item => <View key={String(item.productId)} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: 10, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8 }}><Text style={{ color: theme.colors.textPrimary, flex: 1 }}>{item.name}{item.sku ? ` · ${item.sku}` : ''} · {item.quantity} × {money(Number(item.unitPrice ?? item.unitCost ?? 0))} = {money(Number(item.quantity) * Number(item.unitPrice ?? item.unitCost ?? 0))}</Text><Pressable accessibilityRole="button" disabled={disabled} onPress={() => onChange(items.filter(row => String(row.productId) !== String(item.productId)))} style={{ padding: 12, minHeight: 44 }}><Text style={{ color: theme.colors.danger }}>Quitar</Text></Pressable></View>)}
+    <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Subtotal: {money(subtotal)}</Text>
+    {items.length ? <Text style={{ color: theme.colors.textSecondary }}>{items.length} producto{items.length === 1 ? '' : 's'} agregado{items.length === 1 ? '' : 's'} correctamente.</Text> : null}
   </View>;
 }
