@@ -9,6 +9,8 @@ import { errorHandler } from './http.js';
 import { persistDatabase } from './database.js';
 import { sendWelcomeEmail } from './email.js';
 
+const FANIX_PAGES_HOST = 'erp-fanixglobal.pages.dev';
+
 export function getAllowedOrigins(envName = process.env.NODE_ENV ?? 'development', env = process.env) {
   const raw = env.CORS_ORIGIN ?? '';
   const value = raw.split(',').map(item => item.trim()).filter(Boolean);
@@ -17,6 +19,16 @@ export function getAllowedOrigins(envName = process.env.NODE_ENV ?? 'development
     return value;
   }
   return value.length ? value : ['http://localhost:8081', 'http://localhost:19006'];
+}
+
+export function isAllowedOrigin(origin: string, allowedOrigins = getAllowedOrigins()) {
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return url.protocol === 'https:' && url.hostname.endsWith(`.${FANIX_PAGES_HOST}`);
+  } catch {
+    return false;
+  }
 }
 
 export function isPublicRegistrationAllowed(env = process.env) {
@@ -30,8 +42,7 @@ export function createApp() {
   app.use(helmet());
   app.use(cors({ origin: (origin, callback) => {
     const allowedOrigins = getAllowedOrigins();
-    const requestOrigin = origin ?? '';
-    if (!origin || allowedOrigins.includes(requestOrigin)) return callback(null, true);
+    if (!origin || isAllowedOrigin(origin, allowedOrigins)) return callback(null, true);
     return callback(new Error('Origin not allowed by CORS policy'));
   }, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
